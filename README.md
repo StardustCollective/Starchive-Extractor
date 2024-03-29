@@ -21,7 +21,7 @@ rm -f starchiver-exe > /dev/null 2>&1
 ```
 **2. Download starchiver-ext:**
 ```
-curl -o starchiver-ext https://raw.githubusercontent.com/Proph151Music/Starchive-Extractor/main/starchiver-ext
+curl -o starchiver-ext https://raw.githubusercontent.com/StardustCollective/Starchive-Extractor/main/starchiver-ext
 ```
 **3. Make starchiver-ext executable:**
 ```
