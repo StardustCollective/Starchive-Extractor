@@ -48,7 +48,7 @@ Optional switches that can also be used:
 
 - `-d`: Will automatically force the deletion of data snapshots before downloading/extracting Starchive's.
 - `-o`: Will automatically overwrite the data snapshots when extracting Starchive's.
-- 
+
 ## Requirements
 - Linux Operating System with Bash Shell
 - Internet Connectivity for Downloading Starchive Files
