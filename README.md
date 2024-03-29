@@ -17,7 +17,7 @@ If Starchiver detects that any of these dependencies do not exit, it will try to
 
 **1. Remove old starchiver-ext if it exists:**
 ```
-rm -f starchiver-exe > /dev/null 2>&1
+rm -f starchiver-ext > /dev/null 2>&1
 ```
 **2. Download starchiver-ext:**
 ```
