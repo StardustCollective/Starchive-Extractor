@@ -308,15 +308,18 @@ cleanup_snapshots() {
     local data_path=$1
     local confirmation
     local final_confirmation
+    local extracted_hashes_log="${HOME}/extracted_hashes.log"
 
     if [[ $delete_snapshots == true ]]; then
         talk "Deleting all snapshots in ${data_path}" $GREEN
         sudo find "$data_path" -type f -delete
-        talk "Snapshot deletion completed." $GREEN
-        if [ -f "extracted_hashes.log" ]; then
-            talk "Obsolete extracted_hashes.log deleted." $GREEN
-            rm -f "extracted_hashes.log"
+        if [ -f "$hash_file_path" ]; then
+            if [ -f "$extracted_hashes_log" ]; then
+                talk "Removing extracted_hashes.log file." $GREEN
+                rm -f "$extracted_hashes_log"
+            fi
         fi
+        talk "Snapshot deletion completed." $GREEN
         return
     fi
 
@@ -347,9 +350,9 @@ cleanup_snapshots() {
                     talk "Please wait while deleting snapshots..." $BOLD
                     sudo find "$data_path" -type f -delete
                     talk "Snapshot cleanup completed." $GREEN
-                    if [ -f "extracted_hashes.log" ]; then
+                    if [ -f "$extracted_hashes_log" ]; then
                         talk "Obsolete extracted_hashes.log deleted." $GREEN
-                        rm -f "extracted_hashes.log"
+                        rm -f "extracted_hashes_log"
                     fi
                 else
                     talk "Operation cancelled." $RED
