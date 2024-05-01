@@ -312,11 +312,13 @@ cleanup_snapshots() {
     if [[ $delete_snapshots == true ]]; then
         talk "Deleting all snapshots in ${data_path}" $GREEN
         sudo find "$data_path" -type f -delete
-        talk "Snapshot deletion completed." $GREEN
-        if [ -f "extracted_hashes.log" ]; then
-            talk "Obsolete extracted_hashes.log deleted." $GREEN
-            rm -f "extracted_hashes.log"
+        if [ -f "$hash_file_path" ]; then
+            if [ -f "${data_path}/extracted_hashes.log" ]; then
+                talk "Removing extracted_hashes.log file." $GREEN
+                rm -f "${data_path}/extracted_hashes.log"
+            fi
         fi
+        talk "Snapshot deletion completed." $GREEN
         return
     fi
 
