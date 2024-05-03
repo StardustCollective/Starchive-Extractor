@@ -49,6 +49,42 @@ Optional switches that can also be used:
 - `-d`: Will automatically force the deletion of data snapshots before downloading/extracting Starchive's.
 - `-o`: Will automatically overwrite the data snapshots when extracting Starchive's.
 
+- `--timedate`: Allows for flexible specification of the date and time for which you want to start processing Starchives. This parameter supports several formats, enabling precise control over the extraction process based on specific or relative timestamps.
+
+#### --timedate Formats Supported
+1. **Unix Timestamp**: Provide a 10-digit Unix timestamp to specify the exact moment.
+   ```
+   --timedate 1617753600
+   ```
+2. **Standard Date and Hour**: Use the format `YYYY-MM-DD.HH` to specify a particular year, month, day, and hour.
+   ```
+   --timedate 2024-05-01.14
+   ```
+3. **Date with Hour and Minute Offset**: Specify a date followed by a space and a 'z' or 'Z' and a time in either HMM or HHMM format. The script automatically formats the input into a suitable snapshot time.
+   - `YYYY-MM-DD zHMM`: Hour and minute without leading zeros for the hour.
+   - `YYYY-MM-DD zHHMM`: Hour with leading zeros if necessary and minute.
+   ```
+   --timedate "2024-05-01 z145"
+   --timedate "2024-05-01 Z1545"
+   ```
+
+#### Automatic Timestamp Calculation
+If `--timedate` is used without specifying a timestamp, the script will automatically calculate the most recent valid timestamp from existing snapshots within the specified data path. This calculation adjusts the timestamp backward by one hour to ensure it targets a moment just before the latest snapshot, aiding in consistency and data integrity.
+
+### Example Usage
+- Specifying a direct timestamp:
+  ```
+  ./starchiver-ext --timedate 2024-05-01.14 --data-path /var/tessellation/dag-l0/data --cluster mainnet
+  ```
+- Using an hourly offset:
+  ```
+  ./starchiver-ext --timedate "2024-05-01 z2359" --data-path /var/tessellation/dag-l0/data --cluster mainnet
+  ```
+- Triggering automatic timestamp calculation:
+  ```
+  ./starchiver-ext --timedate --data-path /var/tessellation/dag-l0/data --cluster mainnet
+  ```
+
 ## Requirements
 - Linux Operating System with Bash Shell
 - Internet Connectivity for Downloading Starchive Files
