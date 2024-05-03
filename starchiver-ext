@@ -4,7 +4,7 @@ path=""
 network_choice=""
 delete_snapshots=false
 overwrite_snapshots=false
-timedate=false
+datetime=false
 delete_snapshot_ts=""
 
 # Colors for logging
@@ -568,7 +568,7 @@ main_menu() {
 }
 
 function check_for_recent_snapshot() {
-    if [[ "$timedate" == "true" && -z "$snapshot_time" ]]; then
+    if [[ "$datetime" == "true" && -z "$snapshot_time" ]]; then
         echo "Searching for the most recent snapshot file..."
         local latest_snapshot=$(find "$path" -type f -regex '.*/[0-9]+$' -printf '%T@ %p\n' | sort -r | head -n1 | cut -d" " -f2)
         if [[ -n "$latest_snapshot" ]]; then
@@ -585,14 +585,14 @@ function check_for_recent_snapshot() {
 function parse_arguments() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
-            --timedate)
-                timedate=true
+            --datetime)
+                datetime=true
                 if [[ -z "$2" || "$2" =~ ^- ]]; then
                     # No specific time given; handle auto-timestamp calculation later
-                    echo "No specific time given for --timedate, will calculate based on latest snapshot."
+                    echo "No specific time given for --datetime, will calculate based on latest snapshot."
                 else
                     shift
-                    echo "Processing --timedate with value: $1"
+                    echo "Processing --datetime with value: $1"
                     local input="$1"
                     if [[ "$input" =~ ^[0-9]{10}$ ]]; then  # Unix timestamp
                         snapshot_time=$(date -d @"$1" "+%Y-%m-%d.%H")
@@ -638,8 +638,8 @@ install_tools
 
 parse_arguments "$@"
 
-# Check if timedate processing is needed
-if [[ "$timedate" == "true" ]]; then
+# Check if datetime processing is needed
+if [[ "$datetime" == "true" ]]; then
     if [[ -z "$path" || -z "$network_choice" ]]; then
         echo "Error: Both --data-path and --cluster must be specified."
         exit 1
