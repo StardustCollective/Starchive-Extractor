@@ -4,29 +4,8 @@ path=""
 network_choice=""
 delete_snapshots=false
 overwrite_snapshots=false
-	
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --data-path|--data_path)
-            path="${2%/,,}"
-            shift
-            ;;
-        --cluster)
-            network_choice="${2,,}"
-            shift
-            ;;
-        -d)
-            delete_snapshots=true
-            ;;
-        -o)
-            overwrite_snapshots=true
-            ;;
-        *)
-            # unknown option
-            ;;
-    esac
-    shift
-done
+timedate=false
+delete_snapshot_ts=""
 
 # Colors for logging
 RED='\033[0;31m'
@@ -47,10 +26,10 @@ BOLD='\033[1m'
 UNDERLINE='\033[4m'
 NC='\033[0m' # No Color
 
+# Function that works like echo but simplifies font coloring
 talk() {
     local message="$1"
     local color="$2"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     echo -e "${color}${message}${NC}"
 }
 
@@ -72,6 +51,281 @@ install_tools() {
     if ! command -v pv &> /dev/null; then
         talk "pv could not be found, installing..." $GREEN
         sudo apt-get install -y pv
+    fi
+}
+
+# Function to determine hash URL based on network choice
+set_hash_url() {
+    local hashurl=""
+    case $network_choice in
+        mainnet)
+            hashurl="http://5.161.53.65:7777/hash.txt"
+            ;;
+        integrationnet)
+            hashurl="http://5.161.93.223:7777/hash.txt"
+            ;;
+        testnet)
+            hashurl="http://5.161.189.245:7777/hash.txt"
+            ;;
+        *)
+            echo "Invalid network choice: $network_choice"
+            exit 1
+            ;;
+    esac
+    echo "$hashurl"
+}
+
+# Processes the download, validation and extraction of Starchive containers
+download_verify_extract_tar() {
+    local hash_url_base=$1
+    local extraction_path=$2
+    local start_line=${3:-1}
+    local hash_file_path="${HOME}/hash_file.txt"
+    local extracted_hashes_log="${HOME}/extracted_hashes.log"
+    
+    sudo -v
+
+    echo ""
+    talk "Downloading the hash file from:" $BOLD
+    talk "$hash_url_base" $LGRAY
+    if ! wget -q -nv -O "$hash_file_path" "$hash_url_base"; then
+        talk "Error downloading the hash file from $hash_url_base" $LRED
+        exit 0
+    fi
+
+    if find "$extraction_path" -type f -size +0c -print -quit | grep -q .; then
+        cleanup_snapshots "$extraction_path"
+    fi
+
+    local total_files=$(wc -l < "$hash_file_path")
+    local current_file=$((start_line - 1))
+    local file_counter=$start_line
+
+    [ ! -f "$extracted_hashes_log" ] && touch "$extracted_hashes_log"
+
+    tail -n +$start_line "$hash_file_path" | while IFS= read -r line; do
+        current_file=$((current_file + 1))
+        local file_hash=$(echo $line | awk '{print $1}')
+        local tar_file_name=$(echo $line | awk '{print $2}')
+        local tar_file_path="${HOME}/${tar_file_name}"
+        local tar_url="${hash_url_base%/*}/$tar_file_name"
+        local download_directory=$(dirname "$tar_file_path")
+
+        echo ""
+        if grep -q "$file_hash" "$extracted_hashes_log"; then
+            talk "${BOLD}Processing Starchive $file_counter of $total_files:${NC} ${BOLD}${LCYAN}$tar_file_name${NC}"
+            talk "Starchive has already been extracted successfully. Skipping." $LGREEN
+            echo "$file_hash"
+            continue
+        fi
+
+        talk "${BOLD}Processing Starchive $file_counter of $total_files:${NC} ${BOLD}${LCYAN}$tar_file_name${NC}"
+
+        if [ -f "$tar_file_path" ]; then
+            talk "Starchive already exists. Verifying SHA256 Hash..." $LGRAY
+            local calculated_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
+            if [ "$calculated_hash" = "$file_hash" ]; then
+                talk "Hash matches. Using the existing Starchive." $LGREEN
+                echo "Calculated hash: $calculated_hash"
+            else
+                talk "Hash mismatch. Redownloading..." $LRED
+                rm -f "$tar_file_path"
+                if ! check_space_for_download "$tar_url" "$download_directory"; then
+                    talk "Insufficient disk space for downloading $tar_file_name. Exiting script." $LRED
+                    exit 1
+                fi
+                if ! wget -q --show-progress -O "$tar_file_path" "$tar_url"; then
+                    talk "Error redownloading $tar_file_name. Aborting." $LRED
+                    exit 1
+                else
+                    calculated_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
+                    if [ "$calculated_hash" != "$file_hash" ]; then
+                        talk "Error redownloading $tar_file_name. Hash mismatch. Aborting." $LRED
+                        exit 1
+                    fi
+                fi
+            fi
+        else
+            if ! check_space_for_download "$tar_url" "$download_directory"; then
+                talk "Insufficient disk space for downloading $tar_file_name. Exiting script." $LRED
+                exit 1
+            fi
+            talk "Downloading $tar_file_name" $LGRAY
+            if ! wget -q --show-progress -O "$tar_file_path" "$tar_url"; then
+                talk "Error downloading $tar_file_name. Aborting." $LRED
+                exit 1
+            else
+                local calculated_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
+                if [ "$calculated_hash" != "$file_hash" ]; then
+                    talk "Hash mismatch. Error downloading $tar_file_name. Aborting." $LRED
+                    exit 1
+                else
+                    talk "Hash verified successfully" $LGREEN
+                fi
+            fi
+        fi
+
+        talk "Extracting Starchive:" $BOLD
+        sudo pv "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
+        echo -e "\n${BOLD}$file_counter of $total_files Starchives extracted successfully.${NC}"
+
+        echo "$file_hash" >> "$extracted_hashes_log"
+        rm -f "$tar_file_path"
+        file_counter=$((file_counter + 1))
+    done
+
+    echo ""
+
+    if wget -q --spider "$files_to_remove_url" > /dev/null 2>&1; then
+        echo ""
+        talk "Downloading files_to_remove.txt..." $BOLD
+        if wget -q --show-progress -O "$files_to_remove_path" "$files_to_remove_url"; then
+            local total_files_to_remove=$(wc -l < "$files_to_remove_path")
+            local processed_files=0
+            while IFS= read -r file; do
+                file=$(echo "$file" | sed 's/^\.//')
+                local full_path="${extraction_path}${file}"
+                if [ -f "$full_path" ]; then
+                    sudo rm -r "$full_path"
+                fi
+                processed_files=$((processed_files + 1))
+                local progress=$((processed_files * 100 / total_files_to_remove))
+                echo -ne "Removing obsolete files: $processed_files/$total_files_to_remove (${progress}%) \r"
+            done < "$files_to_remove_path"
+            echo -ne "\n"
+            echo ""
+            echo "Deleting files_to_remove.txt"
+            rm -f "$files_to_remove_path"
+        else
+            talk "Error downloading files_to_remove.txt." $LRED
+        fi
+    fi
+    
+    echo "Deleting hash file..."
+    rm -f "$hash_file_path"
+    echo "Deleting extracted_hashes.log"
+    rm -f "$extracted_hashes_log"
+    echo "Cleanup complete."
+    echo ""
+    talk "---==[ STARCHIVER ]==---" $BOLD$LGREEN
+    talk "Create and Restore Starchive files." $LGREEN
+    echo ""
+    talk "Don't forget to tip the bar tender!" $BOLD$YELLOW
+    talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
+    talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
+    echo ""
+    talk "  DAG Wallet Address for sending tips can be found here..." $YELLOW
+    talk "     ${BOLD}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
+    echo ""
+    exit 0
+}
+
+list_starchive_containers() {
+    local snapshot_time="$1"  # Format: YYYY-MM-DD.HH
+    local data_path="$2"
+    local hash_url_base=$(set_hash_url)
+    local hash_file_path="${HOME}/hash_file.txt"
+
+    # Download the hash file if necessary
+    echo "Downloading the hash file from: $hash_url_base"
+    if ! wget -q -O "$hash_file_path" "$hash_url_base"; then
+        echo "Failed to download or found empty hash file. Exiting."
+        return 1
+    fi
+
+    local year=$(echo $snapshot_time | cut -d'-' -f1)
+    local month=$(echo $snapshot_time | cut -d'-' -f2)
+    local day=$(echo $snapshot_time | cut -d'-' -f3 | cut -d'.' -f1)
+    local hour=$(echo $snapshot_time | cut -d'.' -f2)
+    local found=false
+    local line_number=0
+    local start_line_number=0
+    local match_type=""
+
+    echo "Searching archives starting from: $snapshot_time"
+
+    for (( h=$hour; h>=0; h-- )); do
+        local hour_formatted=$(printf "%02d" $h)
+        local hour_pattern="${year}-${month}-${day}.${hour_formatted}"
+        while IFS= read -r line || [ -n "$line" ]; do
+            ((line_number++))
+            local archive_name=$(echo "$line" | awk '{print $2}')
+            if [[ "$archive_name" == *"$hour_pattern"* ]]; then
+                start_line_number=$line_number
+                match_type="Hourly"
+                found=true
+                break
+            fi
+        done < "$hash_file_path"
+        if [ "$found" == true ]; then break; fi
+        line_number=0
+    done
+
+    if [ "$found" != true ]; then
+        for (( d=$day; d>=1; d-- )); do
+            local day_formatted=$(printf "%02d" $d)
+            local day_pattern="${year}-${month}-${day_formatted}"
+            while IFS= read -r line || [ -n "$line" ]; do
+                ((line_number++))
+                local archive_name=$(echo "$line" | awk '{print $2}')
+                if [[ "$archive_name" == *"$day_pattern"* ]]; then
+                    start_line_number=$line_number
+                    match_type="Daily"
+                    found=true
+                    break
+                fi
+            done < "$hash_file_path"
+            if [ "$found" == true ]; then break; fi
+            line_number=0
+        done
+    fi
+
+    if [ "$found" != true ]; then
+        for (( m=$month; m>=1; m-- )); do
+            local month_formatted=$(printf "%02d" $m)
+            local month_pattern="${year}-${month_formatted}"
+            while IFS= read -r line || [ -n "$line" ]; do
+                ((line_number++))
+                local archive_name=$(echo "$line" | awk '{print $2}')
+                if [[ "$archive_name" == *"$month_pattern"* ]]; then
+                    start_line_number=$line_number
+                    match_type="Monthly"
+                    found=true
+                    break
+                fi
+            done < "$hash_file_path"
+            if [ "$found" == true ]; then break; fi
+            line_number=0
+        done
+    fi
+
+    # Check yearly match
+    if [ "$found" != true ]; then
+        local patterns=("$year" "$((year-1))")
+        for y in "${patterns[@]}"; do
+            while IFS= read -r line || [ -n "$line" ]; do
+                ((line_number++))
+                local archive_name=$(echo "$line" | awk '{print $2}')
+                if [[ "$archive_name" == *"$y"* ]]; then
+                    start_line_number=$line_number
+                    match_type="Yearly"
+                    found=true
+                    break
+                fi
+            done < "$hash_file_path"
+            if [ "$found" == true ]; then break; fi
+            line_number=0
+        done
+    fi
+
+    if [ "$found" == true ]; then
+        delete_snapshots=true
+        overwrite_snapshots=false
+        echo "Match found, initiating download and extraction from line $start_line_number..."
+        delete_snapshot_ts=$(date -d "$year-$month-$day $hour:00:00" '+%s')
+        download_verify_extract_tar "$hash_url_base" "$data_path" "$start_line_number"
+    else
+        echo "No matching Starchive containers found for time: $snapshot_time"
     fi
 }
 
@@ -105,163 +359,10 @@ check_space_for_download() {
     # Compare and return the result
     if [[ $avail_space -lt $file_size ]]; then
         echo "Insufficient disk space."
-        return 1 # False, not enough space
+        return 1
     else
-        return 0 # True, enough space
+        return 0
     fi
-}
-
-download_verify_extract_tar() {
-    local hash_url_base=$1
-    local extraction_path=$2
-    local hash_file_path="${HOME}/hash_file.txt"
-    local extracted_hashes_log="${HOME}/extracted_hashes.log"
-    local files_to_remove_url="${hash_url_base%/*}/files_to_remove.txt"
-    local files_to_remove_path="${HOME}/files_to_remove.txt"
-    
-    sudo -v
-
-    echo ""
-    talk "Downloading the hash file from:" $BOLD
-    talk "$hash_url_base" $LGRAY
-    if ! wget -q -nv -O "$hash_file_path" "$hash_url_base"; then
-        talk "Error downloading the hash file from $hash_url_base" $LRED
-        exit 0
-    fi
-
-    if find "$extraction_path" -type f -size +0c -print -quit | grep -q .; then
-        cleanup_snapshots "$extraction_path"
-    fi
-
-    local total_files=$(wc -l < "$hash_file_path")
-    local current_file=0
-
-    [ ! -f "$extracted_hashes_log" ] && touch "$extracted_hashes_log"
-    
-    while IFS= read -r line; do
-        current_file=$((current_file + 1))
-        local file_hash=$(echo $line | awk '{print $1}')
-        local tar_file_name=$(echo $line | awk '{print $2}')
-        local tar_file_path="${HOME}/${tar_file_name}"
-        download_directory=$(dirname "$tar_file_path")
-        local tar_url="${hash_url_base%/*}/$tar_file_name"
-
-        echo ""
-        if grep -q "$file_hash" "$extracted_hashes_log"; then
-            talk "${BOLD}Processing Starchive $current_file of $total_files:${NC} ${BOLD}${LCYAN}$tar_file_name${NC}"
-            talk "Starchive has already been extracted successfully. Skipping." $LGREEN
-            echo "$file_hash"
-            continue
-        fi
-
-        talk "${BOLD}Processing Starchive $current_file of $total_files:${NC} ${BOLD}${LCYAN}$tar_file_name${NC}"
-
-        if [ -f "$tar_file_path" ]; then
-            echo "Starchive already exists. Verifying SHA256 Hash..."
-            calculated_hash=$(pv "$tar_file_name" | sha256sum | awk '{print $1}')
-            if [ "$calculated_hash" = "$file_hash" ]; then
-                echo "Hash matches. Using the existing Starchive."
-                echo "Calculated hash: $calculated_hash"
-            else
-                talk "Hash mismatch. Redownloading..." $LRED
-                rm -f "$tar_file_path"
-                if ! check_space_for_download "$tar_url" "$download_directory"; then
-                    talk "Insufficient disk space for downloading $tar_file_name. Exiting script." $LRED
-                    exit 1
-                fi
-                if ! wget -q --show-progress -O "$tar_file_path" "$tar_url"; then
-                    talk "Error redownloading $tar_file_name. Aborting." $LRED
-                    exit 1
-                else
-                    talk "Verifying SHA256 Hash:" $BOLD
-                    echo "$file_hash"
-                    calculated_hash=$(pv "$tar_file_name" | sha256sum | awk '{print $1}')
-                    if [ "$calculated_hash" != "$file_hash" ]; then
-                        talk "Error redownloading $tar_file_name. Hash mismatch. Aborting." $LRED
-                        exit 1
-                    else
-                        echo "Downloaded and verified hash: $calculated_hash"
-                    fi
-                fi
-            fi
-        else
-            if ! check_space_for_download "$tar_url" "$download_directory"; then
-                talk "Insufficient disk space for downloading $tar_file_name. Exiting script." $LRED
-                exit 1
-            fi
-            if ! wget -q --show-progress -O "$tar_file_path" "$tar_url"; then
-                talk "Error downloading $tar_file_name. Aborting." $LRED
-                exit 1
-            else
-                talk "Verifying SHA256 Hash:" $BOLD
-                calculated_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
-                echo "Calculated hash: $calculated_hash"
-                if [ "$calculated_hash" != "$file_hash" ]; then
-                    talk "Hash mismatch. Error downloading $tar_file_name. Aborting." $LRED
-                    exit 1
-                else
-                    talk "Hash verified successfully" $LGREEN
-                fi
-            fi
-        fi
-
-        talk "Extracting Starchive:" $BOLD
-        sudo pv "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
-        echo -e "\n${BOLD}$current_file of $total_files Starchives extracted successfully.${NC}"
-
-        echo "$file_hash" >> "$extracted_hashes_log"
-        rm -f "$tar_file_path"
-
-    done < "$hash_file_path"
-
-    echo""
-
-    # echo "Checking for files_to_remove.txt..."
-    if wget -q --spider "$files_to_remove_url" > /dev/null 2>&1; then
-        echo ""
-        talk "Downloading files_to_remove.txt..." $BOLD
-        if wget -q --show-progress -O "$files_to_remove_path" "$files_to_remove_url"; then
-            local total_files_to_remove=$(wc -l < "$files_to_remove_path" | awk '{print $1}')
-            local processed_files=0
-
-            # echo "Removing obsolete files..."
-            while IFS= read -r file; do
-                file=$(echo "$file" | sed 's/^\.//')  # Remove the leading '.' from the file path
-                local full_path="${extraction_path}${file}"
-                if [ -f "$full_path" ]; then
-                    sudo rm -r "$full_path"
-                fi
-
-                processed_files=$((processed_files + 1))
-                local progress=$((processed_files * 100 / total_files_to_remove))
-                echo -ne "Removing obsolete files: $processed_files/$total_files_to_remove (${progress}%) \r"
-            done < "$files_to_remove_path"
-            echo -ne "\n"
-            echo ""
-            echo "Deleting files_to_remove.txt"
-            rm -f "$files_to_remove_path"
-        else
-            talk "Error downloading files_to_remove.txt." $LRED
-        fi
-    fi
-    
-    echo "Deleting hash file..."
-    rm -f "$hash_file_path"
-    echo "Deleting extracted_hashes.log"
-    rm -f "$extracted_hashes_log"
-    echo "Cleanup complete."
-    echo ""
-    talk "---==[ STARCHIVER ]==---" $BOLD$LGREEN
-    talk "Create and Restore Starchive files." $LGREEN
-    echo ""
-    talk "Don't forget to tip the bar tender!" $BOLD$YELLOW
-    talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
-    talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
-    echo ""
-    talk "  DAG Wallet Address for sending tips can be found here..." $YELLOW
-    talk "     ${BOLD}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
-    echo ""
-    exit 0
 }
 
 search_data_folders() {
@@ -308,20 +409,33 @@ cleanup_snapshots() {
     local data_path=$1
     local confirmation
     local final_confirmation
+    local extracted_hashes_log="${HOME}/extracted_hashes.log"
+
+    if [[ $delete_snapshots == true && -n "$delete_snapshot_ts" ]]; then
+        talk "Deleting snapshots from $(date -d "@$delete_snapshot_ts") and newer in $data_path" $CYAN
+        sudo find "$data_path" -type f -printf '%T@ %p\n' | awk -v ts="$delete_snapshot_ts" '$1 >= ts {print $2}' | sudo xargs -r rm 2>/dev/null
+        talk "Snapshot deletion based on timestamp completed." $GREEN$BOLD
+        return
+    elif [[ $delete_snapshots == true ]]; then
+        talk "Deleting all snapshots in ${data_path}" $CYAN
+        sudo find "$data_path" -type f -delete
+        talk "Snapshot deletion completed." $GREEN$BOLD
+        return
+    fi
 
     if [[ $delete_snapshots == true ]]; then
-        talk "Deleting all snapshots in ${data_path}" $GREEN
-        sudo find "$data_path" -type f -delete
-        talk "Snapshot deletion completed." $GREEN
-        if [ -f "extracted_hashes.log" ]; then
-            talk "Obsolete extracted_hashes.log deleted." $GREEN
-            rm -f "extracted_hashes.log"
+        if [ -f "$hash_file_path" ]; then
+            if [ -f "$extracted_hashes_log" ]; then
+                talk "Removing extracted_hashes.log file."
+                rm -f "$extracted_hashes_log"
+            fi
         fi
+        talk "Snapshot deletion completed." $GREEN
         return
     fi
 
     if [[ $overwrite_snapshots == true ]]; then
-        talk "Overwriting snapshots in ${data_path}" $GREEN
+        talk "Overwriting snapshots in ${data_path}" $GREEN$BOLD
         return
     fi
 
@@ -341,15 +455,15 @@ cleanup_snapshots() {
                 talk "Type '${CYAN}YES${NC}'${BOLD} (in all CAPS) to confirm the deletion of snapshots:" $BOLD
                 talk "   (${data_path})"
                 echo ""
-                read -r final_confirmation  # Added this missing read statement
+                read -r final_confirmation
                 if [[ "$final_confirmation" == "YES" ]]; then
                     talk "Cleaning up snapshots in ${data_path}" $GREEN
                     talk "Please wait while deleting snapshots..." $BOLD
                     sudo find "$data_path" -type f -delete
                     talk "Snapshot cleanup completed." $GREEN
-                    if [ -f "extracted_hashes.log" ]; then
+                    if [ -f "$extracted_hashes_log" ]; then
                         talk "Obsolete extracted_hashes.log deleted." $GREEN
-                        rm -f "extracted_hashes.log"
+                        rm -f "extracted_hashes_log"
                     fi
                 else
                     talk "Operation cancelled." $RED
@@ -378,25 +492,6 @@ cleanup_snapshots() {
                 ;;
         esac
     done
-}
-
-# Function to determine hash URL based on network choice
-set_hash_url() {
-    case $network_choice in
-        mainnet)
-            hashurl="http://5.161.53.65:7777/hash.txt"
-            ;;
-        integrationnet)
-            hashurl="http://5.161.93.223:7777/hash.txt"
-            ;;
-        testnet)
-            hashurl="http://5.161.189.245:7777/hash.txt"
-            ;;
-        *)
-            echo "Invalid network choice: $network_choice"
-            exit 1
-            ;;
-    esac
 }
 
 # Main menu function
@@ -472,13 +567,101 @@ main_menu() {
     done
 }
 
+function check_for_recent_snapshot() {
+    if [[ "$timedate" == "true" && -z "$snapshot_time" ]]; then
+        echo "Searching for the most recent snapshot file..."
+        local latest_snapshot=$(find "$path" -type f -regex '.*/[0-9]+$' -printf '%T@ %p\n' | sort -r | head -n1 | cut -d" " -f2)
+        if [[ -n "$latest_snapshot" ]]; then
+            # Convert the timestamp to the required format
+            snapshot_time=$(date -d "@$(stat -c %Y "$latest_snapshot")" -d '-1 hour' "+%Y-%m-%d.%H")
+            echo "The adjusted snapshot time is $snapshot_time"
+        else
+            echo "No valid snapshot found within the specified path."
+            exit 1
+        fi
+    fi
+}
+
+function parse_arguments() {
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --timedate)
+                timedate=true
+                if [[ -z "$2" || "$2" =~ ^- ]]; then
+                    # No specific time given; handle auto-timestamp calculation later
+                    echo "No specific time given for --timedate, will calculate based on latest snapshot."
+                else
+                    shift
+                    echo "Processing --timedate with value: $1"
+                    local input="$1"
+                    if [[ "$input" =~ ^[0-9]{10}$ ]]; then  # Unix timestamp
+                        snapshot_time=$(date -d @"$1" "+%Y-%m-%d.%H")
+                    elif [[ "$input" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}$ ]]; then  # YYYY-MM-DD.HH
+                        snapshot_time="$1"
+                    elif [[ "$input" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]?[zZ]([0-9]{1,2})([0-9]{2})$ ]]; then
+                        local date_part="${BASH_REMATCH[1]}"
+                        local hour="${BASH_REMATCH[2]}"
+                        local minute="${BASH_REMATCH[3]}"
+                        hour=$(printf "%02d" "$hour")  # Ensure hour is two digits
+                        snapshot_time="${date_part}.${hour}"
+                    else
+                        echo "Invalid date format: $1. Expected YYYY-MM-DD.HH or YYYY-MM-DD zHMM or zHHMM."
+                        exit 1
+                    fi
+                fi
+                ;;
+            --data-path|--data_path)
+                shift
+                path="$1"
+                ;;
+            --cluster)
+                shift
+                network_choice="${1,,}"
+                ;;
+            -d)
+                delete_snapshots=true
+                ;;
+            -o)
+                overwrite_snapshots=true
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
 # Verify and install tools, if needed
 install_tools
 
-# Launch with parameters or launch main menu
-if [ -n "$path" ] && [ -n "$network_choice" ]; then
-    set_hash_url
-    download_verify_extract_tar "$hashurl" "$path"
+parse_arguments "$@"
+
+# Check if timedate processing is needed
+if [[ "$timedate" == "true" ]]; then
+    if [[ -z "$path" || -z "$network_choice" ]]; then
+        echo "Error: Both --data-path and --cluster must be specified."
+        exit 1
+    else
+        if [[ -z "$snapshot_time" ]]; then
+            # Find the latest snapshot file that contains only digits in its name within subfolders
+            latest_snapshot=$(find "${path}" -type f -regex '.*/[0-9]+$' -printf '%T+ %p\n' | sort -r | head -n1 | cut -d" " -f2)
+            if [[ -n "$latest_snapshot" ]]; then
+                # Extract the modification time, adjust by subtracting one hour, and format it
+                snapshot_time=$(date -d "$(stat -c %y "$latest_snapshot") -1 hour" "+%Y-%m-%d.%H")
+                echo "The adjusted snapshot time is $snapshot_time"
+            else
+                echo "No valid snapshot found."
+            fi
+        fi
+        list_starchive_containers "$snapshot_time" "$path"
+    fi
 else
-    main_menu
+    if [ -n "$path" ] && [ -n "$network_choice" ]; then
+        hashurl=$(set_hash_url)
+        download_verify_extract_tar "$hashurl" "$path"
+    else
+        main_menu
+    fi
 fi
