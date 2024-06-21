@@ -93,8 +93,14 @@ download_verify_extract_tar() {
         exit 0
     fi
 
-    if find "$extraction_path" -type f -size +0c -print -quit | grep -q .; then
-        cleanup_snapshots "$extraction_path"
+    # Check if the extraction path is empty and set a flag for full extraction if it is
+    if [ -z "$(ls -A "$extraction_path")" ]; then
+        talk "No existing snapshots found. Performing full extraction." $LGREEN
+        start_line=1
+    else
+        if find "$extraction_path" -type f -size +0c -print -quit | grep -q .; then
+            cleanup_snapshots "$extraction_path"
+        fi
     fi
 
     local total_files=$(wc -l < "$hash_file_path")
@@ -226,6 +232,10 @@ list_starchive_containers() {
     local hash_url_base=$(set_hash_url)
     local hash_file_path="${HOME}/hash_file.txt"
 
+    local h
+    local d
+    local m
+
     # Download the hash file if necessary
     echo "Downloading the hash file from: $hash_url_base"
     if ! wget -q -O "$hash_file_path" "$hash_url_base"; then
@@ -244,33 +254,16 @@ list_starchive_containers() {
 
     echo "Searching archives starting from: $snapshot_time"
 
-    for (( h=$hour; h>=0; h-- )); do
-        local hour_formatted=$(printf "%02d" $h)
-        local hour_pattern="${year}-${month}-${day}.${hour_formatted}"
-        while IFS= read -r line || [ -n "$line" ]; do
-            ((line_number++))
-            local archive_name=$(echo "$line" | awk '{print $2}')
-            if [[ "$archive_name" == *"$hour_pattern"* ]]; then
-                start_line_number=$line_number
-                match_type="Hourly"
-                found=true
-                break
-            fi
-        done < "$hash_file_path"
-        if [ "$found" == true ]; then break; fi
-        line_number=0
-    done
-
-    if [ "$found" != true ]; then
-        for (( d=$day; d>=1; d-- )); do
-            local day_formatted=$(printf "%02d" $d)
-            local day_pattern="${year}-${month}-${day_formatted}"
+    if [[ $hour =~ ^[0-9]+$ ]]; then
+        for (( h=$hour; h>=0; h-- )); do
+            local hour_formatted=$(printf "%02d" $h)
+            local hour_pattern="${year}-${month}-${day}.${hour_formatted}"
             while IFS= read -r line || [ -n "$line" ]; do
                 ((line_number++))
                 local archive_name=$(echo "$line" | awk '{print $2}')
-                if [[ "$archive_name" == *"$day_pattern"* ]]; then
+                if [[ "$archive_name" == *"$hour_pattern"* ]]; then
                     start_line_number=$line_number
-                    match_type="Daily"
+                    match_type="Hourly"
                     found=true
                     break
                 fi
@@ -281,22 +274,45 @@ list_starchive_containers() {
     fi
 
     if [ "$found" != true ]; then
-        for (( m=$month; m>=1; m-- )); do
-            local month_formatted=$(printf "%02d" $m)
-            local month_pattern="${year}-${month_formatted}"
-            while IFS= read -r line || [ -n "$line" ]; do
-                ((line_number++))
-                local archive_name=$(echo "$line" | awk '{print $2}')
-                if [[ "$archive_name" == *"$month_pattern"* ]]; then
-                    start_line_number=$line_number
-                    match_type="Monthly"
-                    found=true
-                    break
-                fi
-            done < "$hash_file_path"
-            if [ "$found" == true ]; then break; fi
-            line_number=0
-        done
+        if [[ $day =~ ^[0-9]+$ ]]; then
+            for (( d=$day; d>=1; d-- )); do
+                local day_formatted=$(printf "%02d" $d)
+                local day_pattern="${year}-${month}-${day_formatted}"
+                while IFS= read -r line || [ -n "$line" ]; do
+                    ((line_number++))
+                    local archive_name=$(echo "$line" | awk '{print $2}')
+                    if [[ "$archive_name" == *"$day_pattern"* ]]; then
+                        start_line_number=$line_number
+                        match_type="Daily"
+                        found=true
+                        break
+                    fi
+                done < "$hash_file_path"
+                if [ "$found" == true ]; then break; fi
+                line_number=0
+            done
+        fi
+    fi
+
+    if [ "$found" != true ]; then
+        if [[ $month =~ ^[0-9]+$ ]]; then
+            for (( m=$month; m>=1; m-- )); do
+                local month_formatted=$(printf "%02d" $m)
+                local month_pattern="${year}-${month_formatted}"
+                while IFS= read -r line || [ -n "$line" ]; do
+                    ((line_number++))
+                    local archive_name=$(echo "$line" | awk '{print $2}')
+                    if [[ "$archive_name" == *"$month_pattern"* ]]; then
+                        start_line_number=$line_number
+                        match_type="Monthly"
+                        found=true
+                        break
+                    fi
+                done < "$hash_file_path"
+                if [ "$found" == true ]; then break; fi
+                line_number=0
+            done
+        fi
     fi
 
     # Check yearly match
