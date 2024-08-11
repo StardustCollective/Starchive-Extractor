@@ -4,6 +4,7 @@ path=""
 network_choice=""
 delete_snapshots=false
 overwrite_snapshots=false
+dash_0=false
 datetime=false
 delete_snapshot_ts=""
 
@@ -232,11 +233,6 @@ list_starchive_containers() {
     local hash_url_base=$(set_hash_url)
     local hash_file_path="${HOME}/hash_file.txt"
 
-    local h
-    local d
-    local m
-
-    # Download the hash file if necessary
     echo "Downloading the hash file from: $hash_url_base"
     if ! wget -q -O "$hash_file_path" "$hash_url_base"; then
         echo "Failed to download or found empty hash file. Exiting."
@@ -244,101 +240,50 @@ list_starchive_containers() {
     fi
 
     local year=$(echo $snapshot_time | cut -d'-' -f1)
-    local month=$(echo $snapshot_time | cut -d'-' -f2)
-    local day=$(echo $snapshot_time | cut -d'-' -f3 | cut -d'.' -f1)
-    local hour=$(echo $snapshot_time | cut -d'.' -f2)
+    local month=$(echo $snapshot_time | cut -d'-' -f2 | sed 's/^0*//')
+    local day=$(echo $snapshot_time | cut -d'-' -f3 | cut -d'.' -f1 | sed 's/^0*//')
+    local hour=$(echo $snapshot_time | cut -d'.' -f2 | sed 's/^0*//')
     local found=false
-    local line_number=0
     local start_line_number=0
-    local match_type=""
+    local patterns=()
 
     echo "Searching archives starting from: $snapshot_time"
 
-    if [[ $hour =~ ^[0-9]+$ ]]; then
-        for (( h=$hour; h>=0; h-- )); do
-            local hour_formatted=$(printf "%02d" $h)
-            local hour_pattern="${year}-${month}-${day}.${hour_formatted}"
-            while IFS= read -r line || [ -n "$line" ]; do
-                ((line_number++))
-                local archive_name=$(echo "$line" | awk '{print $2}')
-                if [[ "$archive_name" == *"$hour_pattern"* ]]; then
-                    start_line_number=$line_number
-                    match_type="Hourly"
-                    found=true
-                    break
-                fi
-            done < "$hash_file_path"
-            if [ "$found" == true ]; then break; fi
-            line_number=0
-        done
-    fi
+    # Generate matching patterns
+    patterns+=("${year}-$(printf "%02d" $month)-$(printf "%02d" $day).$(printf "%02d" $hour).tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month)-$(printf "%02d" $day).$(printf "%02d" $hour)_part_1.tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month)-$(printf "%02d" $day).00.tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month)-$(printf "%02d" $day).00_part_1.tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month)-$(printf "%02d" $day).tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month)-$(printf "%02d" $day)_part_1.tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month).tar.gz")
+    patterns+=("${year}-$(printf "%02d" $month)_part_1.tar.gz")
+    patterns+=("${year}.tar.gz")
+    patterns+=("${year}_part_1.tar.gz")
 
-    if [ "$found" != true ]; then
-        if [[ $day =~ ^[0-9]+$ ]]; then
-            for (( d=$day; d>=1; d-- )); do
-                local day_formatted=$(printf "%02d" $d)
-                local day_pattern="${year}-${month}-${day_formatted}"
-                while IFS= read -r line || [ -n "$line" ]; do
-                    ((line_number++))
-                    local archive_name=$(echo "$line" | awk '{print $2}')
-                    if [[ "$archive_name" == *"$day_pattern"* ]]; then
-                        start_line_number=$line_number
-                        match_type="Daily"
-                        found=true
-                        break
-                    fi
-                done < "$hash_file_path"
-                if [ "$found" == true ]; then break; fi
-                line_number=0
-            done
+    # Search for each pattern in the entire file
+    for pattern in "${patterns[@]}"; do
+        local result=$(grep -n "$pattern" "$hash_file_path")
+        if [[ ! -z "$result" ]]; then
+            start_line_number=$(echo "$result" | cut -d: -f1 | head -n 1)
+            local archive_name=$(echo "$result" | awk '{print $2}')
+            found=true
+            echo "Matched Found: $archive_name on line $start_line_number"
+
+            # Set delete_snapshot_ts
+            delete_snapshot_ts=$(date -d "$year-$month-$day $hour:00:00" '+%s')
+            break
         fi
-    fi
-
-    if [ "$found" != true ]; then
-        if [[ $month =~ ^[0-9]+$ ]]; then
-            for (( m=$month; m>=1; m-- )); do
-                local month_formatted=$(printf "%02d" $m)
-                local month_pattern="${year}-${month_formatted}"
-                while IFS= read -r line || [ -n "$line" ]; do
-                    ((line_number++))
-                    local archive_name=$(echo "$line" | awk '{print $2}')
-                    if [[ "$archive_name" == *"$month_pattern"* ]]; then
-                        start_line_number=$line_number
-                        match_type="Monthly"
-                        found=true
-                        break
-                    fi
-                done < "$hash_file_path"
-                if [ "$found" == true ]; then break; fi
-                line_number=0
-            done
-        fi
-    fi
-
-    # Check yearly match
-    if [ "$found" != true ]; then
-        local patterns=("$year" "$((year-1))")
-        for y in "${patterns[@]}"; do
-            while IFS= read -r line || [ -n "$line" ]; do
-                ((line_number++))
-                local archive_name=$(echo "$line" | awk '{print $2}')
-                if [[ "$archive_name" == *"$y"* ]]; then
-                    start_line_number=$line_number
-                    match_type="Yearly"
-                    found=true
-                    break
-                fi
-            done < "$hash_file_path"
-            if [ "$found" == true ]; then break; fi
-            line_number=0
-        done
-    fi
+    done
 
     if [ "$found" == true ]; then
-        delete_snapshots=true
-        overwrite_snapshots=false
-        echo "Match found, initiating download and extraction from line $start_line_number..."
-        delete_snapshot_ts=$(date -d "$year-$month-$day $hour:00:00" '+%s')
+        if [ "$dash_o" == true ]; then
+            delete_snapshots=false
+            overwrite_snapshots=true
+        else
+            delete_snapshots=true
+            overwrite_snapshots=false
+        fi
         download_verify_extract_tar "$hash_url_base" "$data_path" "$start_line_number"
     else
         echo "No matching Starchive containers found for time: $snapshot_time"
@@ -604,7 +549,6 @@ function parse_arguments() {
             --datetime)
                 datetime=true
                 if [[ -z "$2" || "$2" =~ ^- ]]; then
-                    # No specific time given; handle auto-timestamp calculation later
                     echo "No specific time given for --datetime, will calculate based on latest snapshot."
                 else
                     shift
@@ -639,6 +583,7 @@ function parse_arguments() {
                 ;;
             -o)
                 overwrite_snapshots=true
+                dash_o=true
                 ;;
             *)
                 echo "Unknown option: $1"
