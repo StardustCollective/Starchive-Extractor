@@ -60,7 +60,7 @@ set_hash_url() {
     local hashurl=""
     case $network_choice in
         mainnet)
-            hashurl="http://5.161.53.65:7777/hash.txt"
+            hashurl="http://128.140.33.142:7777/hash.txt"
             ;;
         integrationnet)
             hashurl="http://5.161.93.223:7777/hash.txt"
@@ -145,10 +145,13 @@ download_verify_extract_tar() {
                     talk "Error redownloading $tar_file_name. Aborting." $LRED
                     exit 1
                 else
+                    talk "Verifying SHA256 Hash..." $LGRAY
                     calculated_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
                     if [ "$calculated_hash" != "$file_hash" ]; then
                         talk "Error redownloading $tar_file_name. Hash mismatch. Aborting." $LRED
                         exit 1
+                    else
+                        talk "Hash verified successfully" $LGREEN
                     fi
                 fi
             fi
@@ -162,6 +165,7 @@ download_verify_extract_tar() {
                 talk "Error downloading $tar_file_name. Aborting." $LRED
                 exit 1
             else
+                talk "Verifying SHA256 Hash..." $LGRAY
                 local calculated_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
                 if [ "$calculated_hash" != "$file_hash" ]; then
                     talk "Hash mismatch. Error downloading $tar_file_name. Aborting." $LRED
@@ -488,7 +492,7 @@ main_menu() {
                     talk "No valid data folder with snapshot selected. Exiting." $LRED
                     exit 1
                 fi
-                hashurl="http://5.161.53.65:7777/hash.txt"
+                hashurl="http://128.140.33.142:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
                 ;;
             [Ii])
