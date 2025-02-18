@@ -274,8 +274,14 @@ list_starchive_containers() {
             found=true
             echo "Matched Found: $archive_name on line $start_line_number"
 
-            # Set delete_snapshot_ts
-            delete_snapshot_ts=$(date -d "$year-$month-$day $hour:00:00" '+%s')
+            formatted_month=$(printf "%02d" "$month")
+            formatted_day=$(printf "%02d" "$day")
+            if [ -z "$hour" ]; then
+                hour="00"
+            fi
+            formatted_hour=$(printf "%02d" "$hour")
+            delete_snapshot_ts=$(date -d "$year-$formatted_month-$formatted_day $formatted_hour:00:00" '+%s')
+
             break
         fi
     done
