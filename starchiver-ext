@@ -66,7 +66,7 @@ set_hash_url() {
             hashurl="http://5.161.93.223:7777/hash.txt"
             ;;
         testnet)
-            hashurl="http://5.161.189.245:7777/hash.txt"
+            hashurl="http://65.108.87.84:7777/hash.txt"
             ;;
         *)
             echo "Invalid network choice: $network_choice"
@@ -516,7 +516,7 @@ main_menu() {
                     talk "No valid data folder with snapshot selected. Exiting." $LRED
                     exit 1
                 fi
-                hashurl="http://5.161.189.245:7777/hash.txt"
+                hashurl="http://65.108.87.84:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
                 ;;
             [Cc])
