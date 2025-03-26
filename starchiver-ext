@@ -123,6 +123,7 @@ download_verify_extract_tar() {
             talk "${BOLD}Processing Starchive $file_counter of $total_files:${NC} ${BOLD}${LCYAN}$tar_file_name${NC}"
             talk "Starchive has already been extracted successfully. Skipping." $LGREEN
             echo "$file_hash"
+	    file_counter=$((file_counter + 1))
             continue
         fi
 
@@ -384,12 +385,28 @@ cleanup_snapshots() {
 
     if [[ $delete_snapshots == true && -n "$delete_snapshot_ts" ]]; then
         talk "Deleting snapshots from $(date -d "@$delete_snapshot_ts") and newer in $data_path" $CYAN
-        sudo find "$data_path" -type f -printf '%T@ %p\n' | awk -v ts="$delete_snapshot_ts" '$1 >= ts {print $2}' | sudo xargs -r rm 2>/dev/null
+
+        tmpfile=$(mktemp)
+        sudo find "$data_path" -type f -printf '%T@ %p\n' | \
+        awk -v ts="$delete_snapshot_ts" '$1 >= ts {print $2}' > "$tmpfile"
+        total=$(wc -l < "$tmpfile")
+        talk "Found $total files to delete." $CYAN
+
+        cat "$tmpfile" | pv -l -s "$total" | sudo xargs -r rm 2>/dev/null
+        rm "$tmpfile"
+
         talk "Snapshot deletion based on timestamp completed." $GREEN$BOLD
         return
     elif [[ $delete_snapshots == true ]]; then
         talk "Deleting all snapshots in ${data_path}" $CYAN
-        sudo find "$data_path" -type f -delete
+
+        tmpfile=$(mktemp)
+        sudo find "$data_path" -type f > "$tmpfile"
+        total=$(wc -l < "$tmpfile")
+        talk "Found $total files to delete." $CYAN
+        cat "$tmpfile" | pv -l -s "$total" | sudo xargs -r rm
+        rm "$tmpfile"
+
         talk "Snapshot deletion completed." $GREEN$BOLD
         return
     fi
@@ -422,37 +439,63 @@ cleanup_snapshots() {
 
         case $confirmation in
             [Dd])
-                echo ""
-                talk "Type '${CYAN}YES${NC}'${BOLD} (in all CAPS) to confirm the deletion of snapshots:" $BOLD
-                talk "   (${data_path})"
-                echo ""
-                read -r final_confirmation
-                if [[ "$final_confirmation" == "YES" ]]; then
-                    talk "Cleaning up snapshots in ${data_path}" $GREEN
-                    talk "Please wait while deleting snapshots..." $BOLD
-                    sudo find "$data_path" -type f -delete
-                    talk "Snapshot cleanup completed." $GREEN
-                    if [ -f "$extracted_hashes_log" ]; then
-                        talk "Obsolete extracted_hashes.log deleted." $GREEN
-                        rm -f "extracted_hashes_log"
-                    fi
-                else
-                    talk "Operation cancelled." $RED
-                fi
-                break
+                while true; do
+                    echo ""
+                    talk "Type '${CYAN}YES${NC}' (in all CAPS) to confirm deletion, or type 'C' to cancel:" $BOLD
+                    talk "   (${data_path})" $BOLD
+                    read -r final_confirmation
+                    case $final_confirmation in
+                        YES)
+                            talk "Deleting snapshots, Please wait..." $GREEN
+                            for folder in "${data_path}"/*; do
+                                if [ -d "$folder" ]; then
+                                    owner=$(stat -c %U "$folder")
+                                    group=$(stat -c %G "$folder")
+                                    perms=$(stat -c %a "$folder")
+                                    talk "Processing folder: $folder" $CYAN
+                                    sudo rm -rf "$folder"
+                                    mkdir -p "$folder"
+                                    sudo chown "$owner:$group" "$folder"
+                                    sudo chmod "$perms" "$folder"
+                                fi
+                            done
+                            talk "Snapshot folder cleanup completed." $GREEN
+                            if [ -f "$extracted_hashes_log" ]; then
+                                talk "Obsolete extracted_hashes.log deleted." $GREEN
+                                rm -f "$extracted_hashes_log"
+                            fi
+                            break 2
+                            ;;
+                        [Cc])
+                            talk "Operation cancelled." $RED
+                            break 2
+                            ;;
+                        *)
+                            talk "Invalid option. Please type 'YES' to confirm or 'C' to cancel." $RED
+                            ;;
+                    esac
+                done
                 ;;
             [Oo])
-                echo ""
-                talk "Type '${CYAN}YES${NC}'${BOLD} (in all CAPS) to confirm the overwriting of snapshots:" $BOLD
-                talk "   (${data_path})"
-                echo ""
-                read -r final_confirmation
-                if [[ "$final_confirmation" == "YES" ]]; then
-                    talk "Proceeding to overwrite snapshots." $GREEN
-                else
-                    talk "Operation cancelled." $RED
-                fi
-                break
+                while true; do
+                    echo ""
+                    talk "Type '${CYAN}YES${NC}' (in all CAPS) to confirm overwriting, or type 'C' to cancel:" $BOLD
+                    talk "   (${data_path})" $BOLD
+                    read -r final_confirmation
+                    case $final_confirmation in
+                        YES)
+                            talk "Proceeding to overwrite snapshots." $GREEN
+                            break 2
+                            ;;
+                        [Cc])
+                            talk "Operation cancelled." $RED
+                            break 2
+                            ;;
+                        *)
+                            talk "Invalid option. Please type 'YES' to confirm or 'C' to cancel." $RED
+                            ;;
+                    esac
+                done
                 ;;
             [Cc])
                 talk "Operation cancelled. Exiting." $RED
