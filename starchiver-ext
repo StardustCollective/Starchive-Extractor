@@ -659,7 +659,7 @@ if [[ "$datetime" == "true" ]]; then
         exit 1
     else
         if [[ -z "$snapshot_time" ]]; then
-            echo "Find the latest snapshot file that contains only digits in its name within subfolders"
+            echo "Find the latest snapshot file"
             latest_snapshot=$(find "${path}" -type f -regex '.*/[0-9]+$' -printf '%T+ %p\n' | sort -r | head -n1 | cut -d" " -f2)
             if [[ -n "$latest_snapshot" ]]; then
                 # Extract the modification time, adjust by subtracting one hour, and format it
