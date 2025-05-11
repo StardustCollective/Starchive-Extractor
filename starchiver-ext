@@ -340,7 +340,7 @@ check_space_for_download() {
 search_data_folders() {
     local temp_file="/tmp/data_folders_with_snapshot.txt"
     echo "Searching for snapshot data folders..." >&2
-    find / -type d -name "snapshot" -path "*/data/snapshot" -printf '%h\n' 2>/dev/null > "$temp_file"
+    find / -maxdepth 5 -type d -name "snapshot" -path "*/data/snapshot" -printf '%h\n' 2>/dev/null > "$temp_file"
 
     if [ ! -s "$temp_file" ]; then
         echo "No 'data' folders with 'snapshot' found." >&2
