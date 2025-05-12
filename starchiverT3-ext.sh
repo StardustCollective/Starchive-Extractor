@@ -227,8 +227,8 @@ download_verify_extract_tar() {
 
                 if [[ "$matched" == false ]]; then
                     talk "Ordinal $snapshot_time is newer than the latest set. No need to Starchive at this time." $LCYAN
-                    # talk "[SKIP] Exiting early — no archive set contains ordinal $snapshot_time" $LGRAY
-                    return
+                    show_completion_footer
+                    exit 0
                 fi
             else
                 # talk "[DEBUG] Resolving start index from datetime string: $snapshot_time" $YELLOW
@@ -1067,7 +1067,11 @@ if [[ -n "$path" && -n "$network_choice" ]]; then
         hashurl=$(set_hash_url)
     fi
     download_verify_extract_tar "$hashurl" "$path"
+elif [[ "$datetime" == true || "$delete_snapshots" == true || "$overwrite_snapshots" == true ]]; then
+    talk "[FAIL] Missing required arguments for --datetime or snapshot modification. Please provide both --data-path and --cluster." $LRED
+    exit 1
 else
     main_menu
 fi
+
 
