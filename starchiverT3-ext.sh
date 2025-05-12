@@ -893,11 +893,46 @@ T3_resolve_start_index_from_datetime() {
     echo 0
 }
 
+T3_delete_snapshot_info_in_range() {
+    local info_dir="$1"
+    local from="$2"
+    local to="$3"
+    local force_full_range="$4"
+
+    if [[ ! -d "$info_dir" ]]; then
+        talk "[SKIP] snapshot_info folder not found: $info_dir" $LGRAY
+        return
+    fi
+
+    if [[ "$force_full_range" == "true" ]]; then
+        to=$((from + 20000 - 1))
+    fi
+
+    local deleted_count=0
+
+    while read -r fname; do
+        [[ "$fname" =~ ^[0-9]{7,8}$ ]] || continue
+        if (( fname >= from && fname <= to )); then
+            local fullpath="$info_dir/$fname"
+            if sudo rm -f "$fullpath"; then
+                ((deleted_count++))
+            else
+                talk "[ERROR] Could not delete snapshot_info/$fname (code $?)" $LRED
+            fi
+        fi
+    done < <(find "$info_dir" -maxdepth 1 -type f -printf "%f\n")
+
+    if (( deleted_count > 0 )); then
+        talk "    Deleted $deleted_count snapshot_info file(s) in range $from to $to" $CYAN
+    fi
+}
+
 T3_delete_ordinals_from_ordinal() {
     local snapshot_dir="$1"
     local delete_from_ordinal="$2"
 
     local base_path="${snapshot_dir}/incremental_snapshot/ordinal"
+    local info_dir="${snapshot_dir}/snapshot_info"
     local total_sets="${#parsed_start_ordinals[@]}"
     local any_deleted=false
 
@@ -907,6 +942,7 @@ T3_delete_ordinals_from_ordinal() {
         local start="${parsed_start_ordinals[$i]}"
         local count="${parsed_counts[$i]}"
         local end=$((start + count - 1))
+        local is_final_set=$([[ $i -eq $((total_sets - 1)) ]] && echo "true" || echo "false")
 
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
             local target_dir="${base_path}/${start}"
@@ -915,6 +951,7 @@ T3_delete_ordinals_from_ordinal() {
                 sudo rm -rf "$target_dir"
                 any_deleted=true
             fi
+            T3_delete_snapshot_info_in_range "$info_dir" "$delete_from_ordinal" "$end" "$is_final_set"
         elif (( start > delete_from_ordinal )); then
             local dir="${base_path}/${start}"
             if [[ -d "$dir" ]]; then
@@ -922,11 +959,12 @@ T3_delete_ordinals_from_ordinal() {
                 sudo rm -rf "$dir"
                 any_deleted=true
             fi
+            T3_delete_snapshot_info_in_range "$info_dir" "$start" "$end" "$is_final_set"
         fi
     done
 
     if [[ "$any_deleted" == true ]]; then
-        talk "Snapshot deletion complete for ordinals ≥ $delete_from_ordinal." $LGREEN
+        talk "Snapshot deletion complete." $CYAN
     else
         talk "No matching ordinal files or sets found to delete from $delete_from_ordinal." $LGRAY
     fi
@@ -945,7 +983,6 @@ T3_extract_snapshot_sets() {
 
     if [[ "$delete_snapshots" == true && "$start_index" =~ ^[0-9]+$ ]]; then
         local delete_ordinal="${parsed_start_ordinals[$start_index]}"
-        # talk "[DEBUG] Deleting from resolved start ordinal $delete_ordinal (index $start_index)" $YELLOW
         T3_delete_ordinals_from_ordinal "$extraction_path" "$delete_ordinal"
     fi
 
@@ -987,7 +1024,6 @@ T3_extract_snapshot_sets() {
         fi
 
         if [ ! -f "$tar_file_path" ]; then
-            # talk "Checking storage before downloading $fname..." $LGRAY
             if ! check_space_for_download "$tar_url" "$(dirname "$tar_file_path")"; then
                 talk "${BOLD}[FAIL]${NC} Insufficient disk space for $fname. Aborting extraction." $LRED
                 T3_SUCCESS=false
@@ -1067,11 +1103,12 @@ if [[ -n "$path" && -n "$network_choice" ]]; then
         hashurl=$(set_hash_url)
     fi
     download_verify_extract_tar "$hashurl" "$path"
-elif [[ "$datetime" == true || "$delete_snapshots" == true || "$overwrite_snapshots" == true ]]; then
+elif [[ "$datetime" == true ]]; then
+    if [[ -z "$path" || -z "$network_choice" ]]; then
+        main_menu
+    fi
+else
     talk "[FAIL] Missing required arguments for --datetime or snapshot modification. Please provide both --data-path and --cluster." $LRED
     exit 1
-else
-    main_menu
 fi
-
 
