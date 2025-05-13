@@ -1039,7 +1039,8 @@ T3_extract_snapshot_sets() {
         fi
 
         talk "Validating SHA256 hash..." $LGRAY
-        local actual_hash=$(sha256sum "$tar_file_path" | awk '{print $1}')
+        local actual_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
+        # local actual_hash=$(sha256sum "$tar_file_path" | awk '{print $1}')
         if [[ "$actual_hash" != "$expected_hash" ]]; then
             talk "[FAIL] Hash mismatch. Removing bad file and retrying..." $LRED
             rm -f "$tar_file_path"
@@ -1057,7 +1058,8 @@ T3_extract_snapshot_sets() {
             fi
 
             talk "Re-validating SHA256 hash..." $LGRAY
-            actual_hash=$(sha256sum "$tar_file_path" | awk '{print $1}')
+            actual_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
+            # actual_hash=$(sha256sum "$tar_file_path" | awk '{print $1}')
             if [[ "$actual_hash" != "$expected_hash" ]]; then
                 talk "${BOLD}[CRITICAL ERROR]${NC} Retry failed: hash still mismatched for $fname" $LRED
                 talk "${BOLD}[ACTION REQUIRED]${NC} Alert a Team Lead. Snapshots are incomplete." $LRED
@@ -1071,7 +1073,7 @@ T3_extract_snapshot_sets() {
         fi
 
         talk "Extracting $fname..." $BLUE
-        sudo pv "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
+        sudo pv --force "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         if [ $? -eq 0 ]; then
             if [[ ! -f "$extracted_hashes_log" ]]; then
                 touch "$extracted_hashes_log"
