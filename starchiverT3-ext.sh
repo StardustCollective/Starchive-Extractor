@@ -1,5 +1,20 @@
 #!/bin/bash
 
+CORES=$(nproc)
+MAX_CONCURRENT_JOBS=$((CORES * 2))
+job_semaphore=0
+
+wait_for_slot() {
+  while (( job_semaphore >= MAX_CONCURRENT_JOBS )); do
+    wait -n
+    (( job_semaphore-- ))
+  done
+}
+
+script_dir=$(dirname "$(realpath "$0")")
+CLEANUP_MODE=false
+OBSOLETE_DIR="${script_dir}/obsolete_hashes"
+
 path=""
 network_choice=""
 delete_snapshots=false
@@ -25,6 +40,7 @@ PINK='\033[0;95m'
 GREEN='\033[0;32m'
 LGREEN='\033[0;92m'
 YELLOW='\033[0;33m'
+LYELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 LBLUE='\033[0;94m'
 PURPLE='\033[0;35m'
@@ -35,13 +51,62 @@ LGRAY='\033[0;97m'
 WHITE='\033[0;37m'
 BOLD='\033[1m'
 
+BG_BLACK='\033[40m'
 BG_RED='\033[41m'
 BG_GREEN='\033[42m'
 BG_YELLOW='\033[43m'
 BG_BLUE='\033[44m'
 BG_MAGENTA='\033[45m'
 BG_CYAN='\033[46m'
+BG_LGRAY='\033[100m'
 BG_WHITE='\033[47m'
+
+# 256 Color foregrounds
+FG256_BLACK='\033[38;5;0m'
+FG256_MAROON='\033[38;5;1m'
+FG256_DARK_GREEN='\033[38;5;22m'
+FG256_OLIVE='\033[38;5;58m'
+FG256_NAVY='\033[38;5;17m'
+FG256_BLUE='\033[38;5;21m'
+FG256_SKY_BLUE='\033[38;5;39m'
+FG256_TEAL='\033[38;5;30m'
+FG256_CYAN='\033[38;5;51m'
+FG256_SPRING_GREEN='\033[38;5;82m'
+FG256_LIME='\033[38;5;118m'
+FG256_YELLOW='\033[38;5;226m'
+FG256_ORANGE='\033[38;5;208m'
+FG256_RED='\033[38;5;196m'
+FG256_DARK_RED='\033[38;5;88m'
+FG256_MAGENTA='\033[38;5;201m'
+FG256_PURPLE='\033[38;5;93m'
+FG256_PINK='\033[38;5;200m'
+FG256_GRAY_DARK='\033[38;5;239m'
+FG256_GRAY='\033[38;5;245m'
+FG256_WHITE='\033[38;5;15m'
+
+# 256-color backgrounds
+BG256_BLACK='\033[48;5;0m'
+BG256_MAROON='\033[48;5;1m'
+BG256_DARK_GREEN='\033[48;5;22m'
+BG256_DARK_PURPLE='\033[48;5;54m'
+BG256_OLIVE='\033[48;5;58m'
+BG256_NAVY='\033[48;5;17m'
+BG256_BLUE='\033[48;5;21m'
+BG256_SKY_BLUE='\033[48;5;39m'
+BG256_TEAL='\033[48;5;30m'
+BG256_CYAN='\033[48;5;51m'
+BG256_SPRING_GREEN='\033[48;5;82m'
+BG256_LIME='\033[48;5;118m'
+BG256_YELLOW='\033[48;5;226m'
+BG256_ORANGE='\033[48;5;208m'
+BG256_RED='\033[48;5;196m'
+BG256_DARK_RED='\033[48;5;88m'
+BG256_MAGENTA='\033[48;5;201m'
+BG256_PURPLE='\033[48;5;93m'
+BG256_PINK='\033[48;5;200m'
+BG256_GRAY_DARK='\033[48;5;239m'
+BG256_GRAY='\033[48;5;245m'
+BG256_WHITE='\033[48;5;15m'
 
 UNDERLINE='\033[4m'
 NC='\033[0m' # No Color
@@ -219,7 +284,7 @@ download_verify_extract_tar() {
 
                     if (( start <= snapshot_time && snapshot_time < end )); then
                         start_index=$i
-                        talk "[OK] Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start)" $GREEN
+                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start)" $GREEN
                         matched=true
                         break
                     fi
@@ -228,7 +293,7 @@ download_verify_extract_tar() {
                 if [[ "$matched" == false ]]; then
                     talk "Ordinal $snapshot_time is newer than the latest set. No need to Starchive at this time." $LCYAN
                     show_completion_footer
-                    exit 0
+                    return
                 fi
             else
                 # talk "[DEBUG] Resolving start index from datetime string: $snapshot_time" $YELLOW
@@ -250,7 +315,8 @@ download_verify_extract_tar() {
             if [[ "$T3_EXTRACTED_COUNT" -eq 0 && "$T3_SKIPPED_COUNT" -gt 0 ]]; then
                 talk "All ordinal sets were already complete. No extraction needed." $LGREEN
             fi
-            talk "Cleaning up temp files..." $LGRAY
+            # talk "Cleaning up temp files..." $LGRAY
+            talk ""
             rm -f "$hash_file_path"
             rm -f "$extracted_hashes_log"
         else
@@ -258,7 +324,7 @@ download_verify_extract_tar() {
         fi
 
         show_completion_footer
-        exit 0
+        return
     else
         talk "Using ${BOLD}Tessellation v2${NC} archive extraction logic." $BLUE
 
@@ -458,14 +524,14 @@ check_space_for_download() {
 
     local file_size=$(curl -sI "$url" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')
     local human_readable_file_size=$(convert_to_human_readable $file_size)
-    echo "File size to download: $human_readable_file_size"
+    talk "  File size to download: $human_readable_file_size"
 
     local avail_space=$(df --output=avail -B1 "$download_path" | tail -n1)
     local human_readable_avail_space=$(convert_to_human_readable $avail_space)
-    echo "Available space in $download_path: $human_readable_avail_space"
+    talk "  Available space in $download_path: $human_readable_avail_space"
 
     if [[ $avail_space -lt $file_size ]]; then
-        echo "Insufficient disk space."
+        talk "Insufficient disk space!" $RED
         return 1
     else
         return 0
@@ -644,17 +710,63 @@ cleanup_snapshots() {
 }
 
 show_completion_footer() {
-    echo ""
-    talk "---==[ STARCHIVER ]==---" $BOLD$LGREEN
-    talk "Create and Restore Starchive files." $LGREEN
-    echo ""
-    talk "Don't forget to tip the bar tender!" $BOLD$YELLOW
+    talk ""
+    # talk "     ---==[ STARCHIVER ]==---      " $BOLD$LGREEN
+    # talk "Create and Restore Starchive files." $LGREEN
+    # echo ""
+    talk "Don't forget to tip the bar tender!" $LYELLOW
     talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
     talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
     echo ""
-    talk "  DAG Wallet Address for sending tips can be found here..." $YELLOW
-    talk "     ${BOLD}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
+    talk "DAG Wallet Address for sending tips can be found here..." $LYELLOW
+    talk "${LGRAY}${BOLD}${BG256_TEAL}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
+    talk ""
+    talk "If you'd like to show your appreciation, consider sending a tip to ${BOLD}${LGREEN}@Proph151Music${NC} ${LYELLOW}at the Wallet address above." $LYELLOW
+    talk "You can also Delegate some DAG by searching Proph151Music on DAG Explorer. A win, win for both of us!" $LYELLOW
+    talk ""
+}
+
+cleanup_options_menu() {
     echo ""
+    talk "---==[ CLEANUP OPTIONS ]==---" "$BOLD$LGREEN"
+
+    if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
+        reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
+        talk "S) Scan for Obsolete Hashes"
+        talk "R) Reclaim Disk Space ($reclaim_size)"
+    else
+        talk "S) Scan for Obsolete Hashes"
+        talk "R) Reclaim Disk Space (not available)" "$GRAY"
+    fi
+
+    echo ""
+    read -p "Choose an option [S, R]: " choice
+
+    case "$choice" in
+        [Ss])
+            path=$(search_data_folders | xargs)
+            if [ $? -eq 1 ] || [ -z "$path" ]; then
+                talk "No valid data folder with snapshot selected. Exiting." "$LRED"
+                exit 1
+            fi
+            gather_obsolete_hashes_parallel
+            move_obsolete_hashes
+            exit 0
+            ;;
+        [Rr])
+            if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
+                sudo rm -rf "$OBSOLETE_DIR"
+                talk "Obsolete hashes directory removed. Disk space reclaimed." "$GREEN"
+            else
+                talk "No obsolete hashes to reclaim." "$YELLOW"
+            fi
+            exit 0
+            ;;
+        *)
+            talk "Invalid choice. Exiting." "$LRED"
+            exit 1
+            ;;
+    esac
 }
 
 main_menu() {
@@ -662,14 +774,17 @@ main_menu() {
         clear
         echo ""
         echo ""
-        talk "Don't forget to tip the bar tender!" $BOLD$YELLOW
+        talk "Don't forget to tip the bar tender!" $LYELLOW
         talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
         talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
         echo ""
-        talk "  DAG Wallet Address for sending tips can be found here..." $YELLOW
-        talk "     ${BOLD}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
-        echo ""
-        talk "---==[ STARCHIVER ]==---" $BOLD$LGREEN
+        talk "DAG Wallet Address for sending tips can be found here..." $LYELLOW
+        talk "${LGRAY}${BOLD}${BG256_TEAL}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
+        talk ""
+        talk "If you'd like to show your appreciation, consider sending a tip to ${BOLD}${LGREEN}@Proph151Music${NC} ${LYELLOW}at the Wallet address above." $LYELLOW
+        talk "You can also Delegate some DAG by searching Proph151Music on DAG Explorer. A win, win for both of us!" $LYELLOW
+        talk ""
+        talk "     ---==[ STARCHIVER ]==---      " $BG_WHITE$BOLD$LGREEN
         talk "Create and Restore Starchive files." $LGREEN
         echo ""
         talk "Select a network:"
@@ -677,9 +792,12 @@ main_menu() {
         talk "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
         talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
         talk "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
+        talk ""
+        talk "${BOLD}O)${NC} ${BOLD}${LCYAN}Cleanup Options${NC}"
         talk "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
+
         echo ""
-        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, Q]:) " network_choice
+        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, O, Q]:) " network_choice
         echo ""
 
         case $network_choice in
@@ -691,6 +809,9 @@ main_menu() {
                 fi
                 hashurl="http://128.140.33.142:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
+                if [[ "$CLEANUP_MODE" == "true" ]]; then
+                    break
+                fi
                 ;;
             [Ii])
                 path=$(search_data_folders | xargs)
@@ -700,6 +821,9 @@ main_menu() {
                 fi
                 hashurl="http://5.161.243.241:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
+                if [[ "$CLEANUP_MODE" == "true" ]]; then
+                    break
+                fi
                 ;;
             [Tt])
                 path=$(search_data_folders | xargs)
@@ -709,6 +833,9 @@ main_menu() {
                 fi
                 hashurl="http://65.108.87.84:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
+                if [[ "$CLEANUP_MODE" == "true" ]]; then
+                    break
+                fi
                 ;;
             [Cc])
                 path=$(search_data_folders | xargs)
@@ -718,6 +845,13 @@ main_menu() {
                 fi
                 read -p "Enter the URL of the Hash file: " hashurl
                 download_verify_extract_tar "$hashurl" "$path"
+                if [[ "$CLEANUP_MODE" == "true" ]]; then
+                    break
+                fi
+                ;;
+            [Oo])
+                cleanup_options_menu
+                break
                 ;;
             [Qq])
                 exit 0
@@ -732,6 +866,9 @@ main_menu() {
 parse_arguments() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
+            --cleanup)
+                CLEANUP_MODE=true
+                ;;
             --datetime)
                 datetime=true
                 if [[ -z "$2" || "$2" =~ ^- ]]; then
@@ -947,7 +1084,7 @@ T3_delete_ordinals_from_ordinal() {
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
             local target_dir="${base_path}/${start}"
             if [[ -d "$target_dir" ]]; then
-                talk "Deleting ordinal set folder: $target_dir" $CYAN
+                talk "  Deleting ordinal set folder: $target_dir" $CYAN
                 sudo rm -rf "$target_dir"
                 any_deleted=true
             fi
@@ -955,7 +1092,7 @@ T3_delete_ordinals_from_ordinal() {
         elif (( start > delete_from_ordinal )); then
             local dir="${base_path}/${start}"
             if [[ -d "$dir" ]]; then
-                talk "Deleting ordinal set folder: $dir" $CYAN
+                talk "  Deleting ordinal set folder: $dir" $CYAN
                 sudo rm -rf "$dir"
                 any_deleted=true
             fi
@@ -1008,7 +1145,7 @@ T3_extract_snapshot_sets() {
 
         echo ""
         local relative_index=$((i - start_index + 1))
-        talk "${BOLD}${BG_GREEN}Processing Ordinal Set $start ($relative_index of $((total_sets - start_index)))${NC}" $WHITE
+        talk "${BOLD}${BG256_DARK_PURPLE}     Processing Ordinal Set $start ($relative_index of $((total_sets - start_index)))${NC}     " $WHITE
 
         if (( existing_count >= count )); then
             talk "[OK] Set already complete (${existing_count}/${count}). Skipping." $GREEN
@@ -1030,7 +1167,7 @@ T3_extract_snapshot_sets() {
                 return 1
             fi
 
-            talk "Downloading $fname..." $GREEN
+            talk "Downloading $fname..." $LGRAY
             if ! wget -q --show-progress -O "$tar_file_path" "$tar_url"; then
                 talk "[FAIL] Failed to download $fname" $LRED
                 T3_SUCCESS=false
@@ -1045,7 +1182,7 @@ T3_extract_snapshot_sets() {
             talk "[FAIL] Hash mismatch. Removing bad file and retrying..." $LRED
             rm -f "$tar_file_path"
 
-            talk "Re-downloading $fname..." $GREEN
+            talk "Re-downloading $fname..." $LGRAY
             if ! check_space_for_download "$tar_url" "$(dirname "$tar_file_path")"; then
                 talk "${BOLD}[FAIL]${NC} Insufficient disk space for retry of $fname. Aborting extraction." $LRED
                 T3_SUCCESS=false
@@ -1066,30 +1203,86 @@ T3_extract_snapshot_sets() {
                 T3_SUCCESS=false
                 return 1
             else
-                talk "${BOLD}Hash verified.${NC}" $GREEN
+                talk "${BOLD}${BG256_DARK_GREEN}    + Hash verified +${NC}    " $FG256_SPRING_GREEN
             fi
         else
-            talk "${BOLD}Hash verified.${NC}" $GREEN
+            talk "${BOLD}${BG256_DARK_GREEN}    + Hash verified +    ${NC}" $FG256_SPRING_GREEN
         fi
 
-        talk "Extracting $fname..." $BLUE
+        talk "Extracting $fname..." $LGRAY
         sudo pv --force "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         if [ $? -eq 0 ]; then
             if [[ ! -f "$extracted_hashes_log" ]]; then
                 touch "$extracted_hashes_log"
             fi
             echo "$expected_hash" >> "$extracted_hashes_log"
-            talk "[OK] Extracted successfully: $fname" $GREEN
+            talk "    + Extracted successfully: $fname" $LCYAN
             rm -f "$tar_file_path"
             T3_EXTRACTED_COUNT=$((T3_EXTRACTED_COUNT + 1))
         else
-            talk "[FAIL] Extraction failed for $fname" $LRED
+            talk "    X Extraction failed for $fname" $LRED$BOLD
             T3_SUCCESS=false
         fi
     done
 
     echo ""
-    talk "Summary: [OK] $T3_SKIPPED_COUNT sets skipped | $T3_EXTRACTED_COUNT sets extracted." $LGREEN
+    talk "Summary: $T3_SKIPPED_COUNT sets skipped | $T3_EXTRACTED_COUNT sets extracted." $GREEN
+}
+
+gather_obsolete_hashes_parallel() {
+    talk ""
+    talk "Please wait, while Starchiver performs the hash cleanup tasks." $LCYAN
+    talk "This step can take several minutes to sort through millions of files..." $LCYAN
+    talk ""
+    local FIRST_CHARS=(0 1 2 3 4 5 6 7 8 9 a b c d e f)
+    rm -f "$script_dir"/obsolete_part_*.tmp "$script_dir"/hash_obsolete.txt
+    job_semaphore=0
+
+    for c in "${FIRST_CHARS[@]}"; do
+    wait_for_slot
+    (( job_semaphore++ ))
+    {
+        find "$path/incremental_snapshot/hash/${c}"* -type f -links 1 -printf '%p\n' >> "$script_dir"/obsolete_part_${c}.tmp
+    } &
+    done
+    wait
+
+    cat "$script_dir"/obsolete_part_*.tmp > "$script_dir"/hash_obsolete.txt
+    rm -f "$script_dir"/obsolete_part_*.tmp
+
+    local count
+    count=$(wc -l < "$script_dir"/hash_obsolete.txt)
+    talk "Found $count obsolete hashes." "$LGRAY"
+}
+
+move_obsolete_hashes() {
+    mkdir -p "$OBSOLETE_DIR"
+    total=$(wc -l < "$script_dir"/hash_obsolete.txt)
+        pv -l -N "Moving obsolete hashes" -s "$total" "$script_dir"/hash_obsolete.txt | \
+    xargs -P $MAX_CONCURRENT_JOBS -I {} bash -c '
+        src="{}"
+        rel="${src#'"$path"'/incremental_snapshot/hash/}"
+        dst="'"$OBSOLETE_DIR"'/$rel"
+        sudo mkdir -p "$(dirname "$dst")"
+        sudo mv "$src" "$dst"
+    '
+    printf $'\r\033[K\n'
+    stty sane
+    tput cnorm
+    moved="$total"
+    talk "Moved $moved obsolete hashes to $OBSOLETE_DIR" "$LGRAY"
+    dir_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
+    talk "Obsolete hashes directory size: $dir_size" "$LGRAY"
+    if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
+        talk "Would you like to permanently remove the obsolete hashes and reclaim disk space? (y/N)" "$CYAN"
+        read -r response
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            sudo rm -rf "$OBSOLETE_DIR"
+            talk "Obsolete hashes directory removed. Disk space reclaimed." "$GREEN"
+        else
+            talk "Obsolete hashes directory retained at $OBSOLETE_DIR." "$YELLOW"
+        fi
+    fi
 }
 
 install_tools
@@ -1105,12 +1298,17 @@ if [[ -n "$path" && -n "$network_choice" ]]; then
         hashurl=$(set_hash_url)
     fi
     download_verify_extract_tar "$hashurl" "$path"
+elif [[ "$CLEANUP_MODE" == true ]]; then
+    main_menu
 elif [[ "$datetime" == true ]]; then
     if [[ -z "$path" || -z "$network_choice" ]]; then
         main_menu
     fi
 else
-    talk "[FAIL] Missing required arguments for --datetime or snapshot modification. Please provide both --data-path and --cluster." $LRED
-    exit 1
+    main_menu
 fi
 
+if [[ "$CLEANUP_MODE" == true ]]; then
+  gather_obsolete_hashes_parallel
+  move_obsolete_hashes
+fi
