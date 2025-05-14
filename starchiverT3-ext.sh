@@ -809,8 +809,10 @@ main_menu() {
                 fi
                 hashurl="http://128.140.33.142:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == "true" ]]; then
-                    break
+                if [[ "$CLEANUP_MODE" == true ]]; then
+                    cleanup_options_menu
+                else
+                    exit 0
                 fi
                 ;;
             [Ii])
@@ -821,8 +823,10 @@ main_menu() {
                 fi
                 hashurl="http://5.161.243.241:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == "true" ]]; then
-                    break
+                if [[ "$CLEANUP_MODE" == true ]]; then
+                    cleanup_options_menu
+                else
+                    exit 0
                 fi
                 ;;
             [Tt])
@@ -833,8 +837,10 @@ main_menu() {
                 fi
                 hashurl="http://65.108.87.84:7777/hash.txt"
                 download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == "true" ]]; then
-                    break
+                if [[ "$CLEANUP_MODE" == true ]]; then
+                    cleanup_options_menu
+                else
+                    exit 0
                 fi
                 ;;
             [Cc])
@@ -845,13 +851,14 @@ main_menu() {
                 fi
                 read -p "Enter the URL of the Hash file: " hashurl
                 download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == "true" ]]; then
-                    break
+                if [[ "$CLEANUP_MODE" == true ]]; then
+                    cleanup_options_menu
+                else
+                    exit 0
                 fi
                 ;;
             [Oo])
                 cleanup_options_menu
-                break
                 ;;
             [Qq])
                 exit 0
