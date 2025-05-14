@@ -788,16 +788,16 @@ main_menu() {
         talk "Create and Restore Starchive files." $LGREEN
         echo ""
         talk "Select a network:"
-        talk "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
+        # talk "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
         talk "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
-        talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
+        # talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
         talk "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
         talk ""
         talk "${BOLD}O)${NC} ${BOLD}${LCYAN}Cleanup Options${NC}"
         talk "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
 
         echo ""
-        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, O, Q]:) " network_choice
+        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [I, C, O, Q]:) " network_choice
         echo ""
 
         case $network_choice in
