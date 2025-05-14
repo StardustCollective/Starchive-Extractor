@@ -734,13 +734,17 @@ cleanup_options_menu() {
         reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
         talk "S) Scan for Obsolete Hashes"
         talk "R) Reclaim Disk Space ($reclaim_size)"
+        talk ""
+        talk "Q) Quit"
     else
         talk "S) Scan for Obsolete Hashes"
         talk "R) Reclaim Disk Space (not available)" "$GRAY"
+        talk ""
+        talk "Q) Quit"
     fi
 
     echo ""
-    read -p "Choose an option [S, R]: " choice
+    read -p "Choose an option [S, R, Q]: " choice
 
     case "$choice" in
         [Ss])
@@ -760,6 +764,9 @@ cleanup_options_menu() {
             else
                 talk "No obsolete hashes to reclaim." "$YELLOW"
             fi
+            exit 0
+            ;;
+        [Qq])
             exit 0
             ;;
         *)
@@ -788,16 +795,16 @@ main_menu() {
         talk "Create and Restore Starchive files." $LGREEN
         echo ""
         talk "Select a network:"
-        # talk "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
+        talk "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
         talk "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
-        # talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
+        talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
         talk "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
         talk ""
         talk "${BOLD}O)${NC} ${BOLD}${LCYAN}Cleanup Options${NC}"
         talk "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
 
         echo ""
-        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [I, C, O, Q]:) " network_choice
+        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, O, Q]:) " network_choice
         echo ""
 
         case $network_choice in
