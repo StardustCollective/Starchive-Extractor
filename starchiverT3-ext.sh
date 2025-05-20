@@ -130,16 +130,16 @@ fi
 
 tmux set-option -g status-style bg=colour17,fg=colour250
 
-tmux setw -g window-status-format    ''
-tmux setw -g window-status-current-format ''
+tmux set-window-option -g window-status-format ""
+tmux set-window-option -g window-status-current-format ""
 
-tmux set-option -g status-left-length 50
-tmux set-option -g status-left \
-  '#[fg=colour118,bold]Starchiver#[fg=colour250] | Detach: Press CTRL+b then d (Reattach: Run starchiver again.) #[default]'
+tmux set-option -g status-left-length  50
+tmux set-option -g status-left        \
+  '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
 
-tmux set-option -g status-right-length 80
-tmux set-option -g status-right \
-  '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3 #[default]'
+tmux set-option -g status-right-length  80
+tmux set-option -g status-right         \
+  '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
 
 CORES=$(nproc)
 MAX_CONCURRENT_JOBS=$((CORES * 2))
