@@ -128,6 +128,11 @@ if [ -z "$TMUX" ]; then
   fi
 fi
 
+tmux set -g mouse on
+tmux set-option -g history-limit 10000
+
+set -g default-terminal "screen-256color"
+
 tmux set-option -g status-style bg=colour17,fg=colour250
 
 tmux set-window-option -g window-status-format ""
@@ -450,7 +455,7 @@ download_verify_extract_tar() {
                 fi
             fi
         fi
-
+        
         talk "Extracting Starchive:" $BOLD
         sudo pv "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         echo -e "\n${BOLD}$file_counter of $total_files Starchives extracted successfully.${NC}"
@@ -733,39 +738,39 @@ cleanup_snapshots() {
 }
 
 show_completion_footer() {
-    talk ""
-    talk "Don't forget to tip the bar tender!" $LYELLOW
-    talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
-    talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
-    echo ""
-    talk "DAG Wallet Address for sending tips can be found here..." $LYELLOW
-    talk "${LGRAY}${BOLD}${BG256_TEAL}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
-    talk ""
-    talk "If you'd like to show your appreciation, consider sending a tip to ${BOLD}${LGREEN}@Proph151Music${NC} ${LYELLOW}at the Wallet address above." $LYELLOW
-    talk "You can also Delegate some DAG by searching Proph151Music on DAG Explorer. A win, win for both of us!" $LYELLOW
-    talk ""
+    echo -e ""
+    echo -e "${LYELLOW}Don't forget to tip the bar tender!${NC}"
+    echo -e "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
+    echo -e "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
+    echo -e ""
+    echo -e "${LYELLOW}DAG Wallet Address for sending tips can be found here...${NC}"
+    echo -e "${LGRAY}${BOLD}${BG256_TEAL}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
+    echo -e ""
+    echo -e "${LYELLOW}If you'd like to show your appreciation, consider sending a tip to ${BOLD}${LGREEN}@Proph151Music ${LYELLOW}at the Wallet address above.${NC}"
+    echo -e "${LYELLOW}You can also Delegate some DAG by searching Proph151Music on DAG Explorer. A win, win for both of us!${NC}"
+    echo -e ""
 }
 
 options_menu() {
-    echo ""
-    talk "---==[ OPTIONS ]==---" "$BOLD$LGREEN"
+    echo -e ""
+    echo -e "${BOLD}${LGREEN}---==[ OPTIONS ]==---${NC}"
 
     if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
         echo -n "${CYAN}  Calculating obsolete hashes directory size…${NC}"
         reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
         printf "\r\033[K"
-        talk "S) Scan for Obsolete Hashes"
-        talk "R) Reclaim Disk Space ($reclaim_size)"
-        talk ""
-        talk "Q) Quit"
+        echo -e "S) Scan for Obsolete Hashes"
+        echo -e "R) Reclaim Disk Space ($reclaim_size)"
+        echo -e ""
+        echo -e "Q) Quit"
     else
-        talk "S) Scan for Obsolete Hashes"
-        talk "R) Reclaim Disk Space (not available)" "$GRAY"
-        talk ""
-        talk "Q) Quit"
+        echo -e "S) Scan for Obsolete Hashes"
+        echo -e "${GRAY}R) Reclaim Disk Space (not available)${NC}"
+        echo -e ""
+        echo -e "Q) Quit"
     fi
 
-    echo ""
+    echo -e ""
     read -p "Choose an option [S, R, Q]: " choice
 
     case "$choice" in
@@ -773,7 +778,7 @@ options_menu() {
             if [[ -z "$path" ]]; then
                 path=$(search_data_folders | xargs)
                 if [[ $? -ne 0 || -z "$path" ]]; then
-                    talk "No valid data folder with snapshot selected. Exiting." "$LRED"
+                    echo -e "${LRED}No valid data folder with snapshot selected. Exiting.${NC}"
                     exit 1
                 fi
             fi
@@ -784,9 +789,9 @@ options_menu() {
         [Rr])
             if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
                 sudo rm -rf "$OBSOLETE_DIR"
-                talk "Obsolete hashes directory removed. Disk space reclaimed." "$GREEN"
+                talk "Obsolete hashes directory removed. Disk space reclaimed." $GREEN
             else
-                talk "No obsolete hashes to reclaim." "$YELLOW"
+                talk "No obsolete hashes to reclaim." $YELLOW
             fi
             exit 0
             ;;
@@ -803,25 +808,31 @@ options_menu() {
 main_menu() {
     while true; do
         clear
-        echo ""
-        talk "Don't forget to tip the bar tender!" $LYELLOW
-        talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
-        talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
-        echo ""
-        talk "     ---==[ STARCHIVER ]==---      " $BG_WHITE$BOLD$LGREEN
-        talk "Create and Restore Starchive files." $LGREEN
-        echo ""
-        talk "Select a network or options:"
-        talk "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
-        talk "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
-        talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
-        talk "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
-        echo ""
-        talk "${BOLD}O)${NC} ${BOLD}${LCYAN}Options${NC}"
-        talk "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
-        echo ""
-        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, O, Q]:) " choice
-        echo ""
+        echo -e ""
+        echo -e "${LYELLOW}Don't forget to tip the bar tender!${NC}"
+        echo -e "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
+        echo -e "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
+        echo -e ""
+        echo -e "${BG_WHITE}${BOLD}${LGREEN}     ---==[ STARCHIVER ]==---      ${NC}"
+        echo -e "${LGREEN}Create and Restore Starchive files.${NC}"
+        echo -e ""
+        echo -e "Select a network or options:"
+        # echo -e "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
+        echo -e "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
+        # echo -e "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
+        echo -e "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
+        echo -e ""
+        if [[ -f "${HOME}/starchiver.log" ]]; then
+            echo -e "${BOLD}L)${NC} ${BOLD}${LCYAN}View Previous Starchiver Log${NC}"
+        else
+            echo -e "${GRAY}L) View Previous Starchiver Log (not available)${NC}"
+        fi
+        echo -e ""
+        echo -e "${BOLD}O)${NC} ${BOLD}${LCYAN}Options${NC}"
+        echo -e "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
+        echo -e ""
+        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, L, O, Q]:) " choice
+        echo -e ""
 
         case $choice in
             [Mm])
@@ -841,6 +852,33 @@ main_menu() {
                 read -p "Enter the network name (mainnet/integrationnet/testnet): " network_choice
                 network="$network_choice"
                 ;;
+            [Ll])
+                local logfile="${HOME}/starchiver.log"
+                if [[ -f "$logfile" ]]; then
+                    local total
+                    total=$(wc -l < "$logfile")
+                    local start=1
+                    local chunk=40
+
+                    while (( start <= total )); do
+                        sed -n "${start},$((start+chunk-1))p" "$logfile"
+                        echo
+                        echo -e "${CYAN}Viewing starchiver.log (40 lines at a time). Press ENTER to advance, 'q' then ENTER to quit.${NC}"
+                        read -r resp
+                        if [[ $resp == "q" ]]; then
+                            break
+                        fi
+                        start=$(( start + chunk ))
+                    done
+
+                    echo -e "${CYAN}End of log.${NC}"
+                    sleep 1
+                else
+                    echo -e "${LRED}No starchiver.log found.${NC}"
+                    sleep 1
+                fi
+                continue
+                ;;
             [Oo])
                 options_menu
                 exit 0
@@ -849,36 +887,38 @@ main_menu() {
                 exit 0
                 ;;
             *)
-                talk "Invalid choice, please choose again." $LRED
+                echo -e "${LRED}Invalid choice, please choose again.${NC}"
+                sleep 1
                 continue
                 ;;
         esac
-
-        if [[ -z "$path" ]]; then
-            path=$(search_data_folders | xargs) || { talk "No valid data folder… Exiting." $LRED; exit 1; }
-        fi
-
-        if [[ -z "$hashurl" ]]; then
-            hashurl=$(set_hash_url)
-        fi
-
-        missingOrdinalsurl="${hashurl%/*}/${network}_missing_ordinals.txt"
-
-        download_verify_extract_tar "$hashurl" "$path"
-
-        if [[ "$NO_CLEANUP" == true ]]; then
-            exit 0
-        fi
-
-        if [[ "$CLEANUP_ONLY" == true ]]; then
-            gather_obsolete_hashes_parallel
-            move_obsolete_hashes
-            exit 0
-        fi
-
-        options_menu
-        exit 0
+        break
     done
+
+    if [[ -z "$path" ]]; then
+        path=$(search_data_folders | xargs) || { talk "No valid data folder… Exiting." $LRED; exit 1; }
+    fi
+
+    if [[ -z "$hashurl" ]]; then
+        hashurl=$(set_hash_url)
+    fi
+
+    missingOrdinalsurl="${hashurl%/*}/${network}_missing_ordinals.txt"
+
+    download_verify_extract_tar "$hashurl" "$path"
+
+    if [[ "$NO_CLEANUP" == true ]]; then
+        exit 0
+    fi
+
+    if [[ "$CLEANUP_ONLY" == true ]]; then
+        gather_obsolete_hashes_parallel
+        move_obsolete_hashes
+        exit 0
+    fi
+
+    options_menu
+    exit 0
 }
 
 parse_arguments() {
@@ -1240,7 +1280,7 @@ T3_extract_snapshot_sets() {
         sudo pv --force "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         if [ $? -eq 0 ]; then
             echo "$expected_hash" >> "$extracted_hashes_log"
-            talk "    + Extracted successfully: $fname" $LCYAN
+            talk "    + Extracted successfully: $fname" $LGREEN
             rm -f "$tar_file_path"
             T3_EXTRACTED_COUNT=$((T3_EXTRACTED_COUNT + 1))
         else
