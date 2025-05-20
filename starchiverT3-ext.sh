@@ -1,39 +1,5 @@
 #!/bin/bash
 
-CORES=$(nproc)
-MAX_CONCURRENT_JOBS=$((CORES * 2))
-job_semaphore=0
-
-wait_for_slot() {
-  while (( job_semaphore >= MAX_CONCURRENT_JOBS )); do
-    wait -n
-    (( job_semaphore-- ))
-  done
-}
-
-script_dir=$(dirname "$(realpath "$0")")
-CLEANUP_MODE=false
-OBSOLETE_DIR="${script_dir}/obsolete_hashes"
-
-path=""
-network_choice=""
-delete_snapshots=false
-overwrite_snapshots=false
-dash_0=false
-datetime=false
-delete_snapshot_ts=""
-
-IS_T3_MODE=false
-export IS_T3_MODE
-
-T3_SUCCESS=true
-export T3_SUCCESS
-
-T3_EXTRACTED_COUNT=0
-T3_SKIPPED_COUNT=0
-export T3_EXTRACTED_COUNT
-export T3_SKIPPED_COUNT
-
 RED='\033[0;31m'
 LRED='\033[0;91m'
 PINK='\033[0;95m'
@@ -123,6 +89,11 @@ talk() {
 }
 
 install_tools() {
+    if ! command -v tmux &> /dev/null; then
+        talk "tmux could not be found, installing..." $GREEN
+        sudo apt-get update
+        sudo apt-get install -y tmux
+    fi
     if ! command -v tar &> /dev/null; then
         talk "tar could not be found, installing..." $GREEN
         sudo apt-get install -y tar
@@ -139,24 +110,92 @@ install_tools() {
     fi
 }
 
+install_tools
+
+SESSION_NAME="Starchiver"
+ARGS=("$@")
+
+if [ -z "$TMUX" ]; then
+  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    tmux set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
+    exec tmux attach -t "$SESSION_NAME"
+  else
+    exec tmux new-session \
+      -s "$SESSION_NAME" \
+      -n starchiver \
+      -e STARCHIVER_ARGS="${ARGS[*]}" \
+      "$0" "${ARGS[@]}"
+  fi
+fi
+
+tmux set-option -g status-style bg=colour17,fg=colour250
+
+tmux setw -g window-status-format    ''
+tmux setw -g window-status-current-format ''
+
+tmux set-option -g status-left-length 50
+tmux set-option -g status-left \
+  '#[fg=colour118,bold]Starchiver#[fg=colour250] | Detach: Press CTRL+b then d (Reattach: Run starchiver again.) #[default]'
+
+tmux set-option -g status-right-length 80
+tmux set-option -g status-right \
+  '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3 #[default]'
+
+CORES=$(nproc)
+MAX_CONCURRENT_JOBS=$((CORES * 2))
+job_semaphore=0
+
+wait_for_slot() {
+  while (( job_semaphore >= MAX_CONCURRENT_JOBS )); do
+    wait -n
+    (( job_semaphore-- ))
+  done
+}
+
+script_dir=$(dirname "$(realpath "$0")")
+
+declare MAX_UPLOAD_SIZE_MB=100
+HELPER_ARCHIVES_CREATED=0
+export HELPER_ARCHIVES_CREATED
+declare -A missing_ordinals_by_set=()
+CLEANUP_MODE=false
+OBSOLETE_DIR="${script_dir}/obsolete_hashes"
+
+path=""
+network_choice=""
+delete_snapshots=false
+overwrite_snapshots=false
+dash_0=false
+datetime=false
+delete_snapshot_ts=""
+
+IS_T3_MODE=false
+export IS_T3_MODE
+
+T3_SUCCESS=true
+export T3_SUCCESS
+
+T3_EXTRACTED_COUNT=0
+T3_SKIPPED_COUNT=0
+export T3_EXTRACTED_COUNT
+export T3_SKIPPED_COUNT
+
 set_hash_url() {
-    local hashurl=""
-    case $network_choice in
-        mainnet)
-            hashurl="http://128.140.33.142:7777/hash.txt"
-            ;;
-        integrationnet)
-            hashurl="http://5.161.243.241:7777/hash.txt"
-            ;;
-        testnet)
-            hashurl="http://65.108.87.84:7777/hash.txt"
-            ;;
-        *)
-            talk "Invalid network choice: $network_choice" $LRED
-            exit 1
-            ;;
-    esac
-    echo "$hashurl"
+  case $network_choice in
+    mainnet)
+      echo "http://128.140.33.142:7777/hash.txt"
+      ;;
+    integrationnet)
+      echo "http://5.161.243.241:7777/hash.txt"
+      ;;
+    testnet)
+      echo "http://65.108.87.84:7777/hash.txt"
+      ;;
+    *)
+      talk "Invalid network choice: $network_choice" $LRED
+      exit 1
+      ;;
+  esac
 }
 
 T3_map_datetime_to_ordinal() {
@@ -200,6 +239,8 @@ download_verify_extract_tar() {
     > "${HOME}/starchiver.log"
     local hash_url_base=$1
     local extraction_path=$2
+    export DATA_FOLDER_PATH="$extraction_path"
+
     local start_line=${3:-1}
     local hash_file_path="${HOME}/hash_file.txt"
     local extracted_hashes_log="${HOME}/extracted_hashes.log"
@@ -219,17 +260,6 @@ download_verify_extract_tar() {
     if [[ "$IS_T3_MODE" == true ]]; then
         T3_parse_hash_entries "$hash_file_path"
         talk "Total Starchiver sets available = ${#parsed_start_ordinals[@]}" $GREEN
-
-        # if [[ "$delete_snapshots" == true && "$snapshot_time" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]{2}$ ]]; then
-        #     resolved_ordinal=$(T3_map_datetime_to_ordinal "$snapshot_time" "$network_choice")
-        #     if [[ "$resolved_ordinal" =~ ^[0-9]+$ ]]; then
-        #         snapshot_time="$resolved_ordinal"
-        #         talk "[OK] Mapped --datetime to ordinal $snapshot_time for deletion." $CYAN
-        #     else
-        #         talk "[FAIL] Could not resolve ordinal from datetime for deletion. Skipping -d." $LRED
-        #         delete_snapshots=false
-        #     fi
-        # fi
 
         if [[ -s "$extracted_hashes_log" ]]; then
             echo ""
@@ -270,17 +300,12 @@ download_verify_extract_tar() {
         local start_index=0
         if [[ "$datetime" == "true" ]]; then
             if [[ "$snapshot_time" =~ ^[0-9]+$ ]]; then
-                # talk "[DEBUG] snapshot_time = $snapshot_time" $YELLOW
-                # talk "[DEBUG] parsed_start_ordinals = ${parsed_start_ordinals[*]}" $YELLOW
-                # talk "[DEBUG] parsed_counts = ${parsed_counts[*]}" $YELLOW
-
                 local matched=false
                 for ((i = 0; i < ${#parsed_start_ordinals[@]}; i++)); do
                     local start=${parsed_start_ordinals[$i]}
                     local count=${parsed_counts[$i]}
                     local end=$((start + count))
 
-                    # talk "[DEBUG] Checking set $i: start=$start, end=$end" $LGRAY
 
                     if (( start <= snapshot_time && snapshot_time < end )); then
                         start_index=$i
@@ -296,7 +321,6 @@ download_verify_extract_tar() {
                     return
                 fi
             else
-                # talk "[DEBUG] Resolving start index from datetime string: $snapshot_time" $YELLOW
                 start_index=$(T3_resolve_start_index_from_datetime "$snapshot_time" "$extraction_path" "$network_choice" | grep -E '^[0-9]+$' | head -n1)
                 if [[ "$start_index" =~ ^[0-9]+$ ]]; then
                     talk "T3 Mode: Starting Starchiver from ordinal set index $start_index (Ordinal: ${parsed_start_ordinals[$start_index]})" $GREEN
@@ -312,10 +336,9 @@ download_verify_extract_tar() {
         T3_extract_snapshot_sets "$extraction_path" "$hash_file_path" "$hash_url_base" "$start_index" "$snapshot_time"
 
         if [[ "$T3_SUCCESS" == true ]]; then
-            if [[ "$T3_EXTRACTED_COUNT" -eq 0 && "$T3_SKIPPED_COUNT" -gt 0 ]]; then
+            if [[ "$T3_EXTRACTED_COUNT" -eq 0 && "$T3_SKIPPED_COUNT" -gt 0 && "$HELPER_ARCHIVES_CREATED" -eq 0 ]]; then
                 talk "All ordinal sets were already complete. No extraction needed." $LGREEN
             fi
-            # talk "Cleaning up temp files..." $LGRAY
             talk ""
             rm -f "$hash_file_path"
             rm -f "$extracted_hashes_log"
@@ -540,7 +563,6 @@ check_space_for_download() {
 
 search_data_folders() {
     local temp_file="/tmp/data_folders_with_snapshot.txt"
-    echo "Searching for snapshot data folders..." >&2
     find / -maxdepth 5 -type d -name "snapshot" -path "*/data/snapshot" -printf '%h\n' 2>/dev/null > "$temp_file"
 
     if [ ! -s "$temp_file" ]; then
@@ -550,6 +572,7 @@ search_data_folders() {
     else
         echo "" >&2
         echo "Select a snapshot data folder path:" >&2
+        echo "" >&2
         cat "$temp_file" | nl -w2 -s') ' >&2
         echo "  0) Enter path manually" >&2
         echo ""
@@ -711,9 +734,6 @@ cleanup_snapshots() {
 
 show_completion_footer() {
     talk ""
-    # talk "     ---==[ STARCHIVER ]==---      " $BOLD$LGREEN
-    # talk "Create and Restore Starchive files." $LGREEN
-    # echo ""
     talk "Don't forget to tip the bar tender!" $LYELLOW
     talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
     talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
@@ -726,12 +746,14 @@ show_completion_footer() {
     talk ""
 }
 
-cleanup_options_menu() {
+options_menu() {
     echo ""
-    talk "---==[ CLEANUP OPTIONS ]==---" "$BOLD$LGREEN"
+    talk "---==[ OPTIONS ]==---" "$BOLD$LGREEN"
 
     if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
+        echo -n "${CYAN}  Calculating obsolete hashes directory size…${NC}"
         reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
+        printf "\r\033[K"
         talk "S) Scan for Obsolete Hashes"
         talk "R) Reclaim Disk Space ($reclaim_size)"
         talk ""
@@ -748,10 +770,12 @@ cleanup_options_menu() {
 
     case "$choice" in
         [Ss])
-            path=$(search_data_folders | xargs)
-            if [ $? -eq 1 ] || [ -z "$path" ]; then
-                talk "No valid data folder with snapshot selected. Exiting." "$LRED"
-                exit 1
+            if [[ -z "$path" ]]; then
+                path=$(search_data_folders | xargs)
+                if [[ $? -ne 0 || -z "$path" ]]; then
+                    talk "No valid data folder with snapshot selected. Exiting." "$LRED"
+                    exit 1
+                fi
             fi
             gather_obsolete_hashes_parallel
             move_obsolete_hashes
@@ -780,100 +804,80 @@ main_menu() {
     while true; do
         clear
         echo ""
-        echo ""
         talk "Don't forget to tip the bar tender!" $LYELLOW
         talk "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
         talk "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
         echo ""
-        talk "DAG Wallet Address for sending tips can be found here..." $LYELLOW
-        talk "${LGRAY}${BOLD}${BG256_TEAL}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
-        talk ""
-        talk "If you'd like to show your appreciation, consider sending a tip to ${BOLD}${LGREEN}@Proph151Music${NC} ${LYELLOW}at the Wallet address above." $LYELLOW
-        talk "You can also Delegate some DAG by searching Proph151Music on DAG Explorer. A win, win for both of us!" $LYELLOW
-        talk ""
         talk "     ---==[ STARCHIVER ]==---      " $BG_WHITE$BOLD$LGREEN
         talk "Create and Restore Starchive files." $LGREEN
         echo ""
-        talk "Select a network:"
+        talk "Select a network or options:"
         talk "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
         talk "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
         talk "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
         talk "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
-        talk ""
-        talk "${BOLD}O)${NC} ${BOLD}${LCYAN}Cleanup Options${NC}"
+        echo ""
+        talk "${BOLD}O)${NC} ${BOLD}${LCYAN}Options${NC}"
         talk "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
-
         echo ""
-        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, O, Q]:) " network_choice
+        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, O, Q]:) " choice
         echo ""
 
-        case $network_choice in
+        case $choice in
             [Mm])
-                path=$(search_data_folders | xargs)
-                if [ $? -eq 1 ] || [ -z "$path" ]; then
-                    talk "No valid data folder with snapshot selected. Exiting." $LRED
-                    exit 1
-                fi
-                hashurl="http://128.140.33.142:7777/hash.txt"
-                download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == true ]]; then
-                    cleanup_options_menu
-                else
-                    exit 0
-                fi
+                network_choice="mainnet"
+                network="mainnet"
                 ;;
             [Ii])
-                path=$(search_data_folders | xargs)
-                if [ $? -eq 1 ] || [ -z "$path" ]; then
-                    talk "No valid data folder with snapshot selected. Exiting." $LRED
-                    exit 1
-                fi
-                hashurl="http://5.161.243.241:7777/hash.txt"
-                download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == true ]]; then
-                    cleanup_options_menu
-                else
-                    exit 0
-                fi
+                network_choice="integrationnet"
+                network="integrationnet"
                 ;;
             [Tt])
-                path=$(search_data_folders | xargs)
-                if [ $? -eq 1 ] || [ -z "$path" ]; then
-                    talk "No valid data folder with snapshot selected. Exiting." $LRED
-                    exit 1
-                fi
-                hashurl="http://65.108.87.84:7777/hash.txt"
-                download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == true ]]; then
-                    cleanup_options_menu
-                else
-                    exit 0
-                fi
+                network_choice="testnet"
+                network="testnet"
                 ;;
             [Cc])
-                path=$(search_data_folders | xargs)
-                if [ $? -eq 1 ] || [ -z "$path" ]; then
-                    talk "No valid data folder with snapshot selected. Exiting." $LRED
-                    exit 1
-                fi
-                read -p "Enter the URL of the Hash file: " hashurl
-                download_verify_extract_tar "$hashurl" "$path"
-                if [[ "$CLEANUP_MODE" == true ]]; then
-                    cleanup_options_menu
-                else
-                    exit 0
-                fi
+                read -p "Enter the URL of the hash file: " hashurl
+                read -p "Enter the network name (mainnet/integrationnet/testnet): " network_choice
+                network="$network_choice"
                 ;;
             [Oo])
-                cleanup_options_menu
+                options_menu
+                exit 0
                 ;;
             [Qq])
                 exit 0
                 ;;
             *)
                 talk "Invalid choice, please choose again." $LRED
+                continue
                 ;;
         esac
+
+        if [[ -z "$path" ]]; then
+            path=$(search_data_folders | xargs) || { talk "No valid data folder… Exiting." $LRED; exit 1; }
+        fi
+
+        if [[ -z "$hashurl" ]]; then
+            hashurl=$(set_hash_url)
+        fi
+
+        missingOrdinalsurl="${hashurl%/*}/${network}_missing_ordinals.txt"
+
+        download_verify_extract_tar "$hashurl" "$path"
+
+        if [[ "$NO_CLEANUP" == true ]]; then
+            exit 0
+        fi
+
+        if [[ "$CLEANUP_ONLY" == true ]]; then
+            gather_obsolete_hashes_parallel
+            move_obsolete_hashes
+            exit 0
+        fi
+
+        options_menu
+        exit 0
     done
 }
 
@@ -882,6 +886,10 @@ parse_arguments() {
         case "$1" in
             --cleanup)
                 CLEANUP_MODE=true
+                CLEANUP_ONLY=true
+                ;;
+            --nocleanup)
+                NO_CLEANUP=true
                 ;;
             --datetime)
                 datetime=true
@@ -1122,6 +1130,7 @@ T3_delete_ordinals_from_ordinal() {
 }
 
 T3_extract_snapshot_sets() {
+    declare -a ordinal_sets_with_extra=()
     local extraction_path="$1"
     local hash_file_path="$2"
     local hash_url_base="$3"
@@ -1141,8 +1150,6 @@ T3_extract_snapshot_sets() {
     [ ! -f "$extracted_hashes_log" ] && touch "$extracted_hashes_log"
 
     local total_sets="${#parsed_filenames[@]}"
-    local skipped_count=0
-    local extracted_count=0
 
     for ((i = start_index; i < total_sets; i++)); do
         local fname="${parsed_filenames[$i]}"
@@ -1157,20 +1164,27 @@ T3_extract_snapshot_sets() {
             existing_count=$(find "$local_ordinal_dir" -type f | wc -l)
         fi
 
+        if (( existing_count > count )); then
+            if (( i != total_sets - 1 )); then
+                ordinal_sets_with_extra+=("${start}:${existing_count}:${count}")
+            fi
+        fi
+
         echo ""
         local relative_index=$((i - start_index + 1))
         talk "${BOLD}${BG256_DARK_PURPLE}     Processing Ordinal Set $start ($relative_index of $((total_sets - start_index)))${NC}     " $WHITE
 
         if (( existing_count >= count )); then
             talk "[OK] Set already complete (${existing_count}/${count}). Skipping." $GREEN
-             T3_SKIPPED_COUNT=$((T3_SKIPPED_COUNT + 1))
+            T3_SKIPPED_COUNT=$((T3_SKIPPED_COUNT + 1))
             continue
         fi
 
-        local expected_hash=$(grep " $fname" "$hash_file_path" | awk '{print $1}')
+        local expected_hash
+        expected_hash=$(grep " $fname" "$hash_file_path" | awk '{print $1}')
         if grep -q "$expected_hash" "$extracted_hashes_log"; then
             talk "[OK] Archive already logged as extracted. Skipping: $fname" $GREEN
-             T3_SKIPPED_COUNT=$((T3_SKIPPED_COUNT + 1))
+            T3_SKIPPED_COUNT=$((T3_SKIPPED_COUNT + 1))
             continue
         fi
 
@@ -1190,8 +1204,8 @@ T3_extract_snapshot_sets() {
         fi
 
         talk "Validating SHA256 hash..." $LGRAY
-        local actual_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
-        # local actual_hash=$(sha256sum "$tar_file_path" | awk '{print $1}')
+        local actual_hash
+        actual_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
         if [[ "$actual_hash" != "$expected_hash" ]]; then
             talk "[FAIL] Hash mismatch. Removing bad file and retrying..." $LRED
             rm -f "$tar_file_path"
@@ -1210,7 +1224,6 @@ T3_extract_snapshot_sets() {
 
             talk "Re-validating SHA256 hash..." $LGRAY
             actual_hash=$(pv "$tar_file_path" | sha256sum | awk '{print $1}')
-            # actual_hash=$(sha256sum "$tar_file_path" | awk '{print $1}')
             if [[ "$actual_hash" != "$expected_hash" ]]; then
                 talk "${BOLD}[CRITICAL ERROR]${NC} Retry failed: hash still mismatched for $fname" $LRED
                 talk "${BOLD}[ACTION REQUIRED]${NC} Alert a Team Lead. Snapshots are incomplete." $LRED
@@ -1226,9 +1239,6 @@ T3_extract_snapshot_sets() {
         talk "Extracting $fname..." $LGRAY
         sudo pv --force "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         if [ $? -eq 0 ]; then
-            if [[ ! -f "$extracted_hashes_log" ]]; then
-                touch "$extracted_hashes_log"
-            fi
             echo "$expected_hash" >> "$extracted_hashes_log"
             talk "    + Extracted successfully: $fname" $LCYAN
             rm -f "$tar_file_path"
@@ -1239,8 +1249,222 @@ T3_extract_snapshot_sets() {
         fi
     done
 
-    echo ""
+    talk ""
     talk "Summary: $T3_SKIPPED_COUNT sets skipped | $T3_EXTRACTED_COUNT sets extracted." $GREEN
+
+    if (( ${#ordinal_sets_with_extra[@]} )); then
+        local missing_url="${hash_url_base%/*}/${network}_missing_ordinals.txt"
+        talk "Fetching list of potentially missing ordinals for ${network}…" $LGRAY
+
+        local tmpf
+        tmpf=$(mktemp)
+        if ! curl -sSL "$missing_url" -o "$tmpf"; then
+            talk "[WARN] Could not download missing‐ordinals list; skipping helper step." $YELLOW
+            rm -f "$tmpf"
+            return
+        fi
+
+        declare -A missing_ordinals_by_set=()
+        local current_set=""
+        while read -r line; do
+            if [[ "$line" =~ \[([0-9]+)\] ]]; then
+                current_set="${BASH_REMATCH[1]}"
+            elif [[ -n "$current_set" ]]; then
+                missing_ordinals_by_set["$current_set"]+="$line "
+            fi
+        done < "$tmpf"
+
+        rm -f "$tmpf"
+
+        declare -a sets_to_offer=()
+        for entry in "${ordinal_sets_with_extra[@]}"; do
+            IFS=':' read -r set num_local num_expected <<< "$entry"
+            declare -a matches=()
+            find_matching_missing_ordinals "$set" matches
+            if (( ${#matches[@]} > 0 )); then
+                sets_to_offer+=("$set")
+            fi
+        done
+
+        if (( ${#sets_to_offer[@]} )); then
+            talk ""
+            talk "${BOLD}${CYAN}You May Have Needed Local Snapshot Files${NC}"
+            talk ""
+            talk "Your node has ordinal files that aren’t yet in the official Starchiver archives."
+            talk "By sharing these missing ordinals you’ll help fill gaps and improve availability for everyone."
+            talk ""
+            talk "${BOLD}Sets wit files you can contribute:${NC}"
+            for set in "${sets_to_offer[@]}"; do
+                talk "  • Set ${set}" $CYAN
+            done
+            talk ""
+            talk "${YELLOW}This is optional, but your contributions make Starchiver more complete and reliable.${NC}"
+            talk "${YELLOW}If you choose to help, Starchiver will package these ordinal files, upload the packages${NC}"
+            talk "${YELLOW}and provide you with URL's you can share with Proph151Music.${NC}"
+            talk ""
+            read -p "$(echo -e ${BOLD}Would you like to create & upload helper archives now?${NC} [y/N]: )" build_helper
+
+            if [[ "$build_helper" =~ ^[Yy] ]]; then
+                helper_hash_index="${script_dir}/hash_index_helper.txt"
+                talk "Building helper hash index…" $LCYAN
+                rebuild_hash_index_parallel \
+                    "${DATA_FOLDER_PATH}/incremental_snapshot/hash" \
+                    "$helper_hash_index"
+
+                for set in "${sets_to_offer[@]}"; do
+                    declare -a matches=()
+                    find_matching_missing_ordinals "$set" matches
+                    if (( ${#matches[@]} > 0 )); then
+                        build_helper_archive_for_set "$set" "${matches[@]}"
+                    fi
+                done
+
+                rm -f "$helper_hash_index"
+            fi
+        fi
+    fi
+}
+
+parse_missing_ordinals_file() {
+    local url="$missingOrdinalsurl"
+    local tmpf
+    tmpf=$(mktemp)
+
+    if ! curl -sS "$url" -o "$tmpf"; then
+        rm -f "$tmpf"
+        return 1
+    fi
+
+    missing_ordinals_by_set=()
+
+    local current_set=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ \[([0-9]+)\] ]]; then
+            current_set="${BASH_REMATCH[1]}"
+        elif [[ -n "$current_set" ]]; then
+            missing_ordinals_by_set["$current_set"]+=" $line"
+        fi
+    done < "$tmpf"
+
+    rm -f "$tmpf"
+}
+
+find_matching_missing_ordinals() {
+    local set=$1; local -n out=$2
+    local dir="${DATA_FOLDER_PATH}/incremental_snapshot/ordinal/${set}"
+    for range in ${missing_ordinals_by_set[$set]}; do
+        if [[ "$range" == *-* ]]; then
+            IFS='-' read -r a b <<< "$range"
+            for f in "$dir"/*; do
+                local ord=$(basename "$f")
+                if (( ord>=a && ord<=b )); then out+=("$ord"); fi
+            done
+        else
+            [[ -f "$dir/$range" ]] && out+=("$range")
+        fi
+    done
+}
+
+rebuild_hash_index_parallel() {
+    local hash_dir="$1"
+    local index_file="$2"
+    job_semaphore=0
+    talk "Building helper hash index..."
+    local FIRST_CHARS=(0 1 2 3 4 5 6 7 8 9 a b c d e f)
+    > "$index_file"
+    for c in "${FIRST_CHARS[@]}"; do
+        wait_for_slot
+        (( job_semaphore++ ))
+        {
+            local tmpf="${index_file}.part_${c}"
+            > "$tmpf"
+            for folder in "$hash_dir/${c}"*; do
+                [ -d "$folder" ] || continue
+                local prefix
+                prefix=$(basename "$folder")
+                find "$folder" -type f -links +1 \
+                    -printf "%i:hash/${prefix}/%P\n" >> "$tmpf"
+            done
+            cat "$tmpf" >> "$index_file"
+            rm -f "$tmpf"
+        } &
+    done
+    wait
+    talk "Helper hash index built: $(wc -l < "$index_file") entries."
+}
+
+build_helper_archive_for_set() {
+    local set=$1; shift
+    local ords=( "$@" )
+    local tmpd="${script_dir}/starchiver/helper_${set}"
+    local sl="${tmpd}/setlist_${set}_helper.txt"
+    local tf="${script_dir}/starchiver/${network}-s${set}_helper.tar.gz"
+
+    if [[ ! -f "$helper_hash_index" ]]; then
+        talk "[FAIL] helper_hash_index not found at $helper_hash_index" $LRED
+        return 1
+    fi
+
+    mkdir -p "$tmpd"
+    >"$sl"
+
+    for o in "${ords[@]}"; do
+        printf "incremental_snapshot/ordinal/%s/%s\n" "$set" "$o" >>"$sl"
+        local inode hash_rel
+        inode=$(stat -c %i "${DATA_FOLDER_PATH}/incremental_snapshot/ordinal/${set}/${o}") || continue
+        hash_rel=$(grep "^${inode}:" "$helper_hash_index" | cut -d':' -f2-)
+        printf "incremental_snapshot/%s\n" "$hash_rel" >>"$sl"
+    done
+
+    local snap_dir="${DATA_FOLDER_PATH}/snapshot_info"
+    local range_start=$set
+    local range_end=$(( set + 20000 - 1 ))
+    if [[ -d "$snap_dir" ]]; then
+        for info_file in "$snap_dir"/*; do
+            local fname=$(basename "$info_file")
+            if [[ "$fname" =~ ^[0-9]+$ ]] && (( fname >= range_start && fname <= range_end )); then
+                printf "snapshot_info/%s\n" "$fname" >>"$sl"
+            fi
+        done
+    fi
+
+    talk "Running tar for helper archive $tf…" $LCYAN
+    if ! tar --acls --xattrs --selinux --sparse --ignore-failed-read \
+             -czf "$tf" -C "$DATA_FOLDER_PATH" -T "$sl"; then
+        talk "[FAIL] Failed to create helper archive: $tf" $LRED
+        return 1
+    fi
+    talk "Helper archive for set $set created: ${#ords[@]} ordinals + snapshot_info files in $tf" $LCYAN
+    HELPER_ARCHIVES_CREATED=$((HELPER_ARCHIVES_CREATED+1))
+
+    talk "Fetching Gofile server…" $CYAN
+    local servers_resp server
+    servers_resp=$(curl -sSL https://api.gofile.io/servers)
+    server=$(echo "$servers_resp" | grep -Po '"servers":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
+    [[ -z "$server" ]] && \
+      server=$(echo "$servers_resp" | grep -Po '"serversAllZone":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
+    if [[ -z "$server" ]]; then
+        talk "[FAIL] Could not determine Gofile server" $LRED
+        return 1
+    fi
+
+    for file in "$tf" "$sl"; do
+        talk "Uploading $(basename "$file") to Gofile" $CYAN
+        local upload_resp status_str download_url
+        upload_resp=$(curl -sSL \
+            -F "file=@${file}" \
+            -F "expireDate=$(date -d '+7 days' +%Y-%m-%d)" \
+            "https://${server}.gofile.io/uploadFile")
+        status_str=$(echo "$upload_resp" | grep -Po '"status"\s*:\s*"\K[^"]+')
+        download_url=$(echo "$upload_resp" | grep -Po '"downloadPage"\s*:\s*"\K[^"]+')
+        if [[ "$status_str" == "ok" && -n "$download_url" ]]; then
+            talk "Uploaded $(basename "$file"): $download_url" $LGREEN
+        else
+            talk "[FAIL] Gofile upload failed for $(basename "$file")" $LRED
+        fi
+    done
+
+    talk "Please share these URLs with Proph151Music for further processing." $BG256_DARK_GREEN$FG256_LIME
 }
 
 gather_obsolete_hashes_parallel() {
@@ -1271,23 +1495,50 @@ gather_obsolete_hashes_parallel() {
 
 move_obsolete_hashes() {
     mkdir -p "$OBSOLETE_DIR"
-    total=$(wc -l < "$script_dir"/hash_obsolete.txt)
-        pv -l -N "Moving obsolete hashes" -s "$total" "$script_dir"/hash_obsolete.txt | \
-    xargs -P $MAX_CONCURRENT_JOBS -I {} bash -c '
+    local obsolete_file="$script_dir/hash_obsolete.txt"
+
+    if [[ ! -f "$obsolete_file" ]]; then
+        talk "No obsolete‐hash list found; nothing to move." "$LGRAY"
+        return
+    fi
+
+    local total
+    total=$(wc -l < "$obsolete_file")
+
+    if (( total == 0 )); then
+        talk "No obsolete hashes to move." "$LGRAY"
+        return
+    fi
+
+    talk "Found $total obsolete hashes to move." "$LGRAY"
+
+    if (( total == 0 )); then
+        talk "No obsolete hashes to move." "$LGRAY"
+        return
+    fi
+
+    pv -l -N "Moving obsolete hashes" -s "$total" "$obsolete_file" | \
+      xargs -P $MAX_CONCURRENT_JOBS -I {} bash -c '
         src="{}"
         rel="${src#'"$path"'/incremental_snapshot/hash/}"
         dst="'"$OBSOLETE_DIR"'/$rel"
         sudo mkdir -p "$(dirname "$dst")"
         sudo mv "$src" "$dst"
-    '
-    printf $'\r\033[K\n'
+      '
+
+    printf '\r\033[K'
     stty sane
     tput cnorm
-    moved="$total"
+
+    local moved
+    moved=$(find "$OBSOLETE_DIR" -type f | wc -l)
     talk "Moved $moved obsolete hashes to $OBSOLETE_DIR" "$LGRAY"
-    dir_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
-    talk "Obsolete hashes directory size: $dir_size" "$LGRAY"
-    if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
+
+    if (( moved > 0 )); then
+        local dir_size
+        dir_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
+        talk "Obsolete hashes directory size: $dir_size" "$LGRAY"
+
         talk "Would you like to permanently remove the obsolete hashes and reclaim disk space? (y/N)" "$CYAN"
         read -r response
         if [[ "$response" =~ ^[Yy]$ ]]; then
@@ -1296,33 +1547,41 @@ move_obsolete_hashes() {
         else
             talk "Obsolete hashes directory retained at $OBSOLETE_DIR." "$YELLOW"
         fi
+    else
+        talk "Obsolete hashes directory is empty." "$LGRAY"
     fi
 }
 
-install_tools
-
 parse_arguments "$@"
 
-if [[ -n "$path" && -n "$network_choice" ]]; then
-    if [[ "$network_choice" == "custom" ]]; then
-        read -p "Enter the custom URL to your hash.txt file: " hashurl
-        read -p "Enter the network name (e.g. mainnet, integrationnet, testnet): " network_input
-        network_choice=$(echo "$network_input" | xargs)
-    else
-        hashurl=$(set_hash_url)
-    fi
-    download_verify_extract_tar "$hashurl" "$path"
-elif [[ "$CLEANUP_MODE" == true ]]; then
-    main_menu
-elif [[ "$datetime" == true ]]; then
-    if [[ -z "$path" || -z "$network_choice" ]]; then
-        main_menu
-    fi
-else
-    main_menu
+if [[ -n "$network_choice" ]]; then
+  if [[ -z "$path" ]]; then
+    path=$(search_data_folders | xargs) || exit 1
+  fi
+
+  if [[ "$network_choice" == "custom" ]]; then
+    read -p "Enter the URL of the hash file: " hashurl
+    read -p "Enter the network name (mainnet/integrationnet/testnet): " network_input
+    network_choice=$(echo "$network_input" | xargs)
+  else
+    hashurl=$(set_hash_url)
+  fi
+
+  download_verify_extract_tar "$hashurl" "$path"
+
+  if [[ "$NO_CLEANUP" == true ]]; then
+    exit 0
+  fi
+
+  if [[ "$CLEANUP_ONLY" == true || "$CLEANUP_MODE" == true ]]; then
+    gather_obsolete_hashes_parallel
+    move_obsolete_hashes
+    exit 0
+  fi
+
+  options_menu
+  exit 0
 fi
 
-if [[ "$CLEANUP_MODE" == true ]]; then
-  gather_obsolete_hashes_parallel
-  move_obsolete_hashes
-fi
+main_menu
+exit 0
