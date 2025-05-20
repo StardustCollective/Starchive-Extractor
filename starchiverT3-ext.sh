@@ -131,8 +131,6 @@ fi
 tmux set -g mouse on
 tmux set-option -g history-limit 10000
 
-set -g default-terminal "screen-256color"
-
 tmux set-option -g status-style bg=colour17,fg=colour250
 
 tmux set-window-option -g window-status-format ""
