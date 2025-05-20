@@ -1473,24 +1473,34 @@ gather_obsolete_hashes_parallel() {
     talk "This step can take several minutes to sort through millions of files..." $LCYAN
     talk ""
     local FIRST_CHARS=(0 1 2 3 4 5 6 7 8 9 a b c d e f)
-    rm -f "$script_dir"/obsolete_part_*.tmp "$script_dir"/hash_obsolete.txt
     job_semaphore=0
 
+    rm -f "$script_dir"/obsolete_part_*.tmp
+
     for c in "${FIRST_CHARS[@]}"; do
-    wait_for_slot
-    (( job_semaphore++ ))
-    {
-        find "$path/incremental_snapshot/hash/${c}"* -type f -links 1 -printf '%p\n' >> "$script_dir"/obsolete_part_${c}.tmp
-    } &
+        wait_for_slot
+        (( job_semaphore++ ))
+        {
+            find "$path/incremental_snapshot/hash/${c}"* -type f -links 1 -printf '%p\n' \
+                >> "$script_dir"/obsolete_part_${c}.tmp
+        } &
     done
     wait
 
-    cat "$script_dir"/obsolete_part_*.tmp > "$script_dir"/hash_obsolete.txt
+    local tmp_all="$script_dir/hash_obsolete.tmp"
+    rm -f "$tmp_all"
+    cat "$script_dir"/obsolete_part_*.tmp > "$tmp_all" 2>/dev/null
     rm -f "$script_dir"/obsolete_part_*.tmp
 
-    local count
-    count=$(wc -l < "$script_dir"/hash_obsolete.txt)
-    talk "Found $count obsolete hashes." "$LGRAY"
+    if [[ -s "$tmp_all" ]]; then
+        mv "$tmp_all" "$script_dir/hash_obsolete.txt"
+        local count
+        count=$(wc -l < "$script_dir/hash_obsolete.txt")
+        talk "Found $count obsolete hashes." "$LGRAY"
+    else
+        rm -f "$tmp_all"
+        talk "Found 0 obsolete hashes." "$LGRAY"
+    fi
 }
 
 move_obsolete_hashes() {
@@ -1550,6 +1560,7 @@ move_obsolete_hashes() {
     else
         talk "Obsolete hashes directory is empty." "$LGRAY"
     fi
+    rm -f "$obsolete_file"
 }
 
 parse_arguments "$@"
