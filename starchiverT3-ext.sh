@@ -926,6 +926,9 @@ parse_arguments() {
                 CLEANUP_MODE=true
                 CLEANUP_ONLY=true
                 ;;
+            --onlycleanup)
+                ONLY_CLEANUP=true
+                ;;
             --nocleanup)
                 NO_CLEANUP=true
                 ;;
@@ -1128,42 +1131,59 @@ T3_delete_ordinals_from_ordinal() {
     local snapshot_dir="$1"
     local delete_from_ordinal="$2"
 
-    if [[ "$IS_T3_MODE" == true && "$delete_snapshots" == true && "$datetime" != true ]]; then
-        talk "    Removing $snapshot_dir/incremental_snapshot" $GREEN
-        sudo rm -rf "${snapshot_dir}/incremental_snapshot"
-        talk "    Removing $snapshot_dir/incremental_snapshot_tmp" $GREEN
-        sudo rm -rf "${snapshot_dir}/incremental_snapshot_tmp"
-        talk "    Removing $snapshot_dir/snapshot_info" $GREEN
-        sudo rm -rf "${snapshot_dir}/snapshot_info"
-        talk "Performed full cleanup of snapshots." $CYAN
+    #–– DEBUG ––
+    # talk "[DEBUG] T3_delete_ordinals_from_ordinal called with:" $CYAN
+    # talk "        snapshot_dir= $snapshot_dir" $CYAN
+    # talk "        delete_from_ordinal= $delete_from_ordinal" $CYAN
+    # talk "        delete_snapshots= $delete_snapshots, datetime= $datetime, IS_T3_MODE= $IS_T3_MODE" $CYAN
+
+    if [[ ! -d "$snapshot_dir" ]]; then
+        talk "[ERROR] snapshot_dir does not exist: $snapshot_dir" $LRED
         return
     fi
 
-    local base_path="${snapshot_dir}/incremental_snapshot/ordinal"
-    local info_dir="${snapshot_dir}/snapshot_info"
+    if [[ "$IS_T3_MODE" == true && "$delete_snapshots" == true && "$datetime" != true ]]; then
+        talk "Deleting entire snapshot data..." $GREEN
+
+        trap 'talk "Full cleanup cancelled by user." $YELLOW; trap - SIGINT; return 1' SIGINT
+
+        sudo stdbuf -oL rm -rfv \
+            "$snapshot_dir/incremental_snapshot" \
+            "$snapshot_dir/incremental_snapshot_tmp" \
+            "$snapshot_dir/snapshot_info" \
+        | pv -l -N "Removed items" > /dev/null
+
+        trap - SIGINT
+
+        talk "Full cleanup complete." $GREEN
+        return
+    fi
+
+    local base_path="$snapshot_dir/incremental_snapshot/ordinal"
+    local info_dir="$snapshot_dir/snapshot_info"
     local total_sets="${#parsed_start_ordinals[@]}"
     local any_deleted=false
 
-    talk "Deleting snapshots from ordinal $delete_from_ordinal and later..." $YELLOW
+    talk "Deleting snapshots from ordinal $delete_from_ordinal and later…" $YELLOW
 
-    for ((i = 0; i < total_sets; i++)); do
+    for (( i=0; i<total_sets; i++ )); do
         local start="${parsed_start_ordinals[$i]}"
         local count="${parsed_counts[$i]}"
         local end=$((start + count - 1))
         local is_final_set=$([[ $i -eq $((total_sets - 1)) ]] && echo "true" || echo "false")
 
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
-            local target_dir="${base_path}/${start}"
-            if [[ -d "$target_dir" ]]; then
-                talk "  Deleting ordinal set folder: $target_dir" $CYAN
-                sudo rm -rf "$target_dir"
+            local dir="$base_path/$start"
+            if [[ -d "$dir" ]]; then
+                talk "  → Deleting ordinal set folder: $dir" $CYAN
+                sudo rm -rf "$dir"
                 any_deleted=true
             fi
             T3_delete_snapshot_info_in_range "$info_dir" "$delete_from_ordinal" "$end" "$is_final_set"
         elif (( start > delete_from_ordinal )); then
-            local dir="${base_path}/${start}"
+            local dir="$base_path/$start"
             if [[ -d "$dir" ]]; then
-                talk "  Deleting ordinal set folder: $dir" $CYAN
+                talk "  → Deleting ordinal set folder: $dir" $CYAN
                 sudo rm -rf "$dir"
                 any_deleted=true
             fi
@@ -1201,6 +1221,19 @@ T3_extract_snapshot_sets() {
     local total_sets="${#parsed_filenames[@]}"
 
     for ((i = start_index; i < total_sets; i++)); do
+        if (( i == total_sets - 1 )); then
+            talk "Checking for updated hash.txt before final set…" $CYAN
+            local tmp_hash="${HOME}/hash_file_new.txt"
+            if wget -q -O "$tmp_hash" "$hash_url_base" && ! cmp -s "$tmp_hash" "$hash_file_path"; then
+                mv "$tmp_hash" "$hash_file_path"
+                T3_parse_hash_entries "$hash_file_path"
+                total_sets="${#parsed_filenames[@]}"
+                talk "  → Detected new entries in hash.txt: now $total_sets sets total." $GREEN
+            else
+                rm -f "$tmp_hash"
+            fi
+        fi
+
         local fname="${parsed_filenames[$i]}"
         local start="${parsed_start_ordinals[$i]}"
         local count="${parsed_counts[$i]}"
@@ -1342,14 +1375,14 @@ T3_extract_snapshot_sets() {
             talk "Your node has ordinal files that aren’t yet in the official Starchiver archives."
             talk "By sharing these missing ordinals you’ll help fill gaps and improve availability for everyone."
             talk ""
-            talk "${BOLD}Sets wit files you can contribute:${NC}"
+            talk "${BOLD}Sets with files you can contribute:${NC}"
             for set in "${sets_to_offer[@]}"; do
                 talk "  • Set ${set}" $CYAN
             done
             talk ""
             talk "${YELLOW}This is optional, but your contributions make Starchiver more complete and reliable.${NC}"
             talk "${YELLOW}If you choose to help, Starchiver will package these ordinal files, upload the packages${NC}"
-            talk "${YELLOW}and provide you with URL's you can share with Proph151Music.${NC}"
+            talk "${YELLOW}and provide you with URLs you can share with Proph151Music.${NC}"
             talk ""
             read -p "$(echo -e ${BOLD}Would you like to create & upload helper archives now?${NC} [y/N]: )" build_helper
 
@@ -1598,13 +1631,15 @@ move_obsolete_hashes() {
         dir_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
         talk "Obsolete hashes directory size: $dir_size" "$LGRAY"
 
-        talk "Would you like to permanently remove the obsolete hashes and reclaim disk space? (y/N)" "$CYAN"
-        read -r response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
-            sudo rm -rf "$OBSOLETE_DIR"
-            talk "Obsolete hashes directory removed. Disk space reclaimed." "$GREEN"
-        else
-            talk "Obsolete hashes directory retained at $OBSOLETE_DIR." "$YELLOW"
+        if [[ "$ONLY_CLEANUP" != true ]]; then
+            talk "Would you like to permanently remove the obsolete hashes and reclaim disk space? (y/N)" "$CYAN"
+            read -r response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                sudo rm -rf "$OBSOLETE_DIR"
+                talk "Obsolete hashes directory removed. Disk space reclaimed." "$GREEN"
+            else
+                talk "Obsolete hashes directory retained at $OBSOLETE_DIR." "$YELLOW"
+            fi
         fi
     else
         talk "Obsolete hashes directory is empty." "$LGRAY"
@@ -1613,6 +1648,17 @@ move_obsolete_hashes() {
 }
 
 parse_arguments "$@"
+
+if [[ "$ONLY_CLEANUP" == true ]]; then
+    if [[ -z "$path" ]]; then
+        talk "No data path supplied for --onlycleanup. Please select one:" $CYAN
+        path=$(search_data_folders | xargs) \
+            || { talk "No valid data folder selected. Exiting." $LRED; exit 1; }
+    fi
+    gather_obsolete_hashes_parallel
+    move_obsolete_hashes
+    exit 0
+fi
 
 if [[ -n "$network_choice" ]]; then
   if [[ -z "$path" ]]; then
