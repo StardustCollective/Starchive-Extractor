@@ -815,9 +815,9 @@ main_menu() {
         echo -e "${LGREEN}Create and Restore Starchive files.${NC}"
         echo -e ""
         echo -e "Select a network or options:"
-        # echo -e "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
+        echo -e "${BOLD}M)${NC} ${BOLD}${LCYAN}MainNet${NC}"
         echo -e "${BOLD}I)${NC} ${BOLD}${LCYAN}IntegrationNet${NC}"
-        # echo -e "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
+        echo -e "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
         echo -e "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
         echo -e ""
         if [[ -f "${HOME}/starchiver.log" ]]; then
@@ -1212,7 +1212,7 @@ T3_extract_snapshot_sets() {
         local relative_index=$((i - start_index + 1))
         talk "${BOLD}${BG256_DARK_PURPLE}     Processing Ordinal Set $start ($relative_index of $((total_sets - start_index)))${NC}     " $WHITE
 
-        if (( existing_count >= count )); then
+        if (( existing_count >= count )) && [ "$overwrite_snapshots" != true ]; then
             talk "[OK] Set already complete (${existing_count}/${count}). Skipping." $GREEN
             T3_SKIPPED_COUNT=$((T3_SKIPPED_COUNT + 1))
             continue
