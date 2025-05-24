@@ -1128,6 +1128,15 @@ T3_delete_ordinals_from_ordinal() {
     local snapshot_dir="$1"
     local delete_from_ordinal="$2"
 
+    #–– if T3 mode and plain -d (no --datetime), nuke all remnants and skip per-set deletion
+    if [[ "$IS_T3_MODE" == true && "$delete_snapshots" == true && "$datetime" != true ]]; then
+        sudo rm -rf "${snapshot_dir}/incremental_snapshot" \
+                    "${snapshot_dir}/incremental_snapshot_tmp" \
+                    "${snapshot_dir}/snapshot_info"
+        talk "[INFO] Performed full T3 cleanup (-d without --datetime)." $CYAN
+        return
+    fi
+
     local base_path="${snapshot_dir}/incremental_snapshot/ordinal"
     local info_dir="${snapshot_dir}/snapshot_info"
     local total_sets="${#parsed_start_ordinals[@]}"
