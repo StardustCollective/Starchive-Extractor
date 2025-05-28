@@ -115,12 +115,18 @@ install_tools
 SESSION_NAME="Starchiver"
 ARGS=("$@")
 
+SOCKET_DIR="$HOME/.tmux"
+mkdir -p "$SOCKET_DIR"
+SOCKET_PATH="$SOCKET_DIR/${SESSION_NAME}.sock"
+
+TMUX_CMD="tmux -S $SOCKET_PATH"
+
 if [ -z "$TMUX" ]; then
-  if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
     tmux set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
-    exec tmux attach -t "$SESSION_NAME"
+    exec $TMUX_CMD attach -t "$SESSION_NAME"
   else
-    exec tmux new-session \
+    exec $TMUX_CMD new-session \
       -s "$SESSION_NAME" \
       -n starchiver \
       -e STARCHIVER_ARGS="${ARGS[*]}" \
@@ -128,8 +134,8 @@ if [ -z "$TMUX" ]; then
   fi
 fi
 
-tmux set -g mouse on
-tmux set-option -g history-limit 10000
+tmux set -g mouse off
+tmux set-option -g history-limit 1000000
 
 tmux set-option -g status-style bg=colour17,fg=colour250
 
@@ -754,7 +760,7 @@ options_menu() {
     echo -e "${BOLD}${LGREEN}---==[ OPTIONS ]==---${NC}"
 
     if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
-        echo -n "${CYAN}  Calculating obsolete hashes directory size…${NC}"
+        echo -n "${CYAN}  Calculating obsolete hashes directory sizeâ€¦${NC}"
         reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
         printf "\r\033[K"
         echo -e "S) Scan for Obsolete Hashes"
@@ -810,6 +816,9 @@ main_menu() {
         echo -e "${LYELLOW}Don't forget to tip the bar tender!${NC}"
         echo -e "  ${BOLD}This script was written by:${NC} ${BOLD}${LGREEN}@Proph151Music${NC}"
         echo -e "     ${BOLD}for the ${LBLUE}Constellation Network${NC} ${BOLD}ecosystem.${NC}"
+        echo -e ""
+        echo -e "${LYELLOW}DAG Wallet Address for sending tips can be found here...${NC}"
+        echo -e "${LGRAY}${BOLD}${BG256_TEAL}DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3${NC}"
         echo -e ""
         echo -e "${BG_WHITE}${BOLD}${LGREEN}     ---==[ STARCHIVER ]==---      ${NC}"
         echo -e "${LGREEN}Create and Restore Starchive files.${NC}"
@@ -894,7 +903,7 @@ main_menu() {
     done
 
     if [[ -z "$path" ]]; then
-        path=$(search_data_folders | xargs) || { talk "No valid data folder… Exiting." $LRED; exit 1; }
+        path=$(search_data_folders | xargs) || { talk "No valid data folderâ€¦ Exiting." $LRED; exit 1; }
     fi
 
     if [[ -z "$hashurl" ]]; then
@@ -1045,7 +1054,7 @@ T3_resolve_start_index_from_datetime() {
         return
     fi
 
-    talk "Looking for ordinal set with timestamp ≤ $formatted_input_ts" $CYAN
+    talk "Looking for ordinal set with timestamp â‰¤ $formatted_input_ts" $CYAN
 
     for ((i = total_sets - 1; i >= 0; i--)); do
         local start_ord="${parsed_start_ordinals[$i]}"
@@ -1058,7 +1067,7 @@ T3_resolve_start_index_from_datetime() {
         response=$(curl -s --max-time 4 "${api_url}/${test_ord}")
 
         if [[ -z "$response" || "$response" == "null" || "$response" =~ "504 Gateway" ]]; then
-            talk "[WARN] No response for ordinal $test_ord — skipping" $YELLOW
+            talk "[WARN] No response for ordinal $test_ord â€” skipping" $YELLOW
             continue
         fi
 
@@ -1066,7 +1075,7 @@ T3_resolve_start_index_from_datetime() {
         ts=$(echo "$response" | sed -n 's/.*"timestamp":"\([^"]*\)".*/\1/p')
 
         if [[ -z "$ts" ]]; then
-            talk "[WARN] No timestamp in response for ordinal $test_ord — skipping" $YELLOW
+            talk "[WARN] No timestamp in response for ordinal $test_ord â€” skipping" $YELLOW
             continue
         fi
 
@@ -1089,7 +1098,7 @@ T3_resolve_start_index_from_datetime() {
         fi
     done
 
-    talk "[WARN] No ordinal set found with timestamp ≤ $formatted_input_ts. Starting from beginning." $YELLOW
+    talk "[WARN] No ordinal set found with timestamp â‰¤ $formatted_input_ts. Starting from beginning." $YELLOW
     echo 0
 }
 
@@ -1131,12 +1140,6 @@ T3_delete_ordinals_from_ordinal() {
     local snapshot_dir="$1"
     local delete_from_ordinal="$2"
 
-    #–– DEBUG ––
-    # talk "[DEBUG] T3_delete_ordinals_from_ordinal called with:" $CYAN
-    # talk "        snapshot_dir= $snapshot_dir" $CYAN
-    # talk "        delete_from_ordinal= $delete_from_ordinal" $CYAN
-    # talk "        delete_snapshots= $delete_snapshots, datetime= $datetime, IS_T3_MODE= $IS_T3_MODE" $CYAN
-
     if [[ ! -d "$snapshot_dir" ]]; then
         talk "[ERROR] snapshot_dir does not exist: $snapshot_dir" $LRED
         return
@@ -1164,7 +1167,7 @@ T3_delete_ordinals_from_ordinal() {
     local total_sets="${#parsed_start_ordinals[@]}"
     local any_deleted=false
 
-    talk "Deleting snapshots from ordinal $delete_from_ordinal and later…" $YELLOW
+    talk "Deleting snapshots from ordinal $delete_from_ordinal and laterâ€¦" $YELLOW
 
     for (( i=0; i<total_sets; i++ )); do
         local start="${parsed_start_ordinals[$i]}"
@@ -1175,7 +1178,7 @@ T3_delete_ordinals_from_ordinal() {
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
             local dir="$base_path/$start"
             if [[ -d "$dir" ]]; then
-                talk "  → Deleting ordinal set folder: $dir" $CYAN
+                talk "  â†’ Deleting ordinal set folder: $dir" $CYAN
                 sudo rm -rf "$dir"
                 any_deleted=true
             fi
@@ -1183,7 +1186,7 @@ T3_delete_ordinals_from_ordinal() {
         elif (( start > delete_from_ordinal )); then
             local dir="$base_path/$start"
             if [[ -d "$dir" ]]; then
-                talk "  → Deleting ordinal set folder: $dir" $CYAN
+                talk "  â†’ Deleting ordinal set folder: $dir" $CYAN
                 sudo rm -rf "$dir"
                 any_deleted=true
             fi
@@ -1222,13 +1225,13 @@ T3_extract_snapshot_sets() {
 
     for ((i = start_index; i < total_sets; i++)); do
         if (( i == total_sets - 1 )); then
-            talk "Checking for updated hash.txt before final set…" $CYAN
+            talk "Checking for updated hash.txt before final setâ€¦" $CYAN
             local tmp_hash="${HOME}/hash_file_new.txt"
             if wget -q -O "$tmp_hash" "$hash_url_base" && ! cmp -s "$tmp_hash" "$hash_file_path"; then
                 mv "$tmp_hash" "$hash_file_path"
                 T3_parse_hash_entries "$hash_file_path"
                 total_sets="${#parsed_filenames[@]}"
-                talk "  → Detected new entries in hash.txt: now $total_sets sets total." $GREEN
+                talk "  â†’ Detected new entries in hash.txt: now $total_sets sets total." $GREEN
             else
                 rm -f "$tmp_hash"
             fi
@@ -1336,12 +1339,12 @@ T3_extract_snapshot_sets() {
 
     if (( ${#ordinal_sets_with_extra[@]} )); then
         local missing_url="${hash_url_base%/*}/${network}_missing_ordinals.txt"
-        talk "Fetching list of potentially missing ordinals for ${network}…" $LGRAY
+        talk "Fetching list of potentially missing ordinals for ${network}â€¦" $LGRAY
 
         local tmpf
         tmpf=$(mktemp)
         if ! curl -sSL "$missing_url" -o "$tmpf"; then
-            talk "[WARN] Could not download missing‐ordinals list; skipping helper step." $YELLOW
+            talk "[WARN] Could not download missingâ€ordinals list; skipping helper step." $YELLOW
             rm -f "$tmpf"
             return
         fi
@@ -1372,12 +1375,12 @@ T3_extract_snapshot_sets() {
             talk ""
             talk "${BOLD}${CYAN}You May Have Needed Local Snapshot Files${NC}"
             talk ""
-            talk "Your node has ordinal files that aren’t yet in the official Starchiver archives."
-            talk "By sharing these missing ordinals you’ll help fill gaps and improve availability for everyone."
+            talk "Your node has ordinal files that arenâ€™t yet in the official Starchiver archives."
+            talk "By sharing these missing ordinals youâ€™ll help fill gaps and improve availability for everyone."
             talk ""
             talk "${BOLD}Sets with files you can contribute:${NC}"
             for set in "${sets_to_offer[@]}"; do
-                talk "  • Set ${set}" $CYAN
+                talk "  â€¢ Set ${set}" $CYAN
             done
             talk ""
             talk "${YELLOW}This is optional, but your contributions make Starchiver more complete and reliable.${NC}"
@@ -1388,7 +1391,7 @@ T3_extract_snapshot_sets() {
 
             if [[ "$build_helper" =~ ^[Yy] ]]; then
                 helper_hash_index="${script_dir}/hash_index_helper.txt"
-                talk "Building helper hash index…" $LCYAN
+                talk "Building helper hash indexâ€¦" $LCYAN
                 rebuild_hash_index_parallel \
                     "${DATA_FOLDER_PATH}/incremental_snapshot/hash" \
                     "$helper_hash_index"
@@ -1510,7 +1513,7 @@ build_helper_archive_for_set() {
         done
     fi
 
-    talk "Running tar for helper archive $tf…" $LCYAN
+    talk "Running tar for helper archive $tfâ€¦" $LCYAN
     if ! tar --acls --xattrs --selinux --sparse --ignore-failed-read \
              -czf "$tf" -C "$DATA_FOLDER_PATH" -T "$sl"; then
         talk "[FAIL] Failed to create helper archive: $tf" $LRED
@@ -1519,7 +1522,7 @@ build_helper_archive_for_set() {
     talk "Helper archive for set $set created: ${#ords[@]} ordinals + snapshot_info files in $tf" $LCYAN
     HELPER_ARCHIVES_CREATED=$((HELPER_ARCHIVES_CREATED+1))
 
-    talk "Fetching Gofile server…" $CYAN
+    talk "Fetching Gofile serverâ€¦" $CYAN
     local servers_resp server
     servers_resp=$(curl -sSL https://api.gofile.io/servers)
     server=$(echo "$servers_resp" | grep -Po '"servers":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
@@ -1590,7 +1593,7 @@ move_obsolete_hashes() {
     local obsolete_file="$script_dir/hash_obsolete.txt"
 
     if [[ ! -f "$obsolete_file" ]]; then
-        talk "No obsolete‐hash list found; nothing to move." "$LGRAY"
+        talk "No obsoleteâ€hash list found; nothing to move." "$LGRAY"
         return
     fi
 
