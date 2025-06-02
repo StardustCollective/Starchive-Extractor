@@ -755,29 +755,285 @@ show_completion_footer() {
     echo -e ""
 }
 
+upload_log() {
+    if [[ -z "$path" ]]; then
+        path=$(search_data_folders | xargs)
+        if [[ $? -ne 0 || -z "$path" ]]; then
+            echo -e "${LRED}No valid data folder with snapshot selected. Exiting.${NC}"
+            exit 1
+        fi
+    fi
+    local log_dir="${path}/../logs"
+    local log_file="$log_dir/app.log"
+    if [[ ! -f "$log_file" ]]; then
+        talk "No app.log file found at $log_file" $LRED
+        return
+    fi
+
+    local timestamp
+    timestamp=$(date +%F)
+    local ip_addr
+    ip_addr=$(curl -s https://api.ipify.org)
+    if [[ -z "$ip_addr" ]]; then
+        ip_addr="unknown_ip"
+    fi
+
+    local new_log_name="${timestamp}_${ip_addr}_app.log"
+    local tmp_copy="${script_dir}/${new_log_name}"
+    cp "$log_file" "$tmp_copy" || {
+        talk "[FAIL] Could not copy log file to $tmp_copy" $LRED
+        return
+    }
+
+    talk "Uploading $new_log_name to Gofile" $CYAN
+    local servers_resp server
+    servers_resp=$(curl -sSL https://api.gofile.io/servers)
+    server=$(echo "$servers_resp" | grep -Po '"servers":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
+    [[ -z "$server" ]] && \
+      server=$(echo "$servers_resp" | grep -Po '"serversAllZone":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
+    if [[ -z "$server" ]]; then
+        talk "[FAIL] Could not determine Gofile server" $LRED
+        rm -f "$tmp_copy"
+        return
+    fi
+
+    local upload_resp status_str download_url
+    upload_resp=$(curl -sSL \
+        -F "file=@${tmp_copy}" \
+        -F "expireDate=$(date -d '+7 days' +%Y-%m-%d)" \
+        "https://${server}.gofile.io/uploadFile")
+    status_str=$(echo "$upload_resp" | grep -Po '"status"\s*:\s*"\K[^"]+')
+    download_url=$(echo "$upload_resp" | grep -Po '"downloadPage"\s*:\s*"\K[^"]+')
+    if [[ "$status_str" == "ok" && -n "$download_url" ]]; then
+        echo -e ""
+        echo -e "${BG256_BLUE}${WHITE}${BOLD}==========================================${NC}"
+        echo -e "${BG256_BLUE}${WHITE}${BOLD}      Log Upload Complete      ${NC}"
+        echo -e "${BG256_BLUE}${WHITE}${BOLD}==========================================${NC}"
+        # echo -e ""
+        # echo -e "${CYAN}The app.log has been uploaded successfully.${NC}"
+        # talk "Uploaded $new_log_name" $LGREEN
+        talk ""
+        talk "Forward this url to a Team Lead who can have this app.log analyzed..." $YELLOW
+        talk ""
+        talk "${BG256_DARK_GREEN}    --->  $download_url${NC}" $WHITE$BOLD
+        talk ""
+        echo -e ""
+        echo -e "${CYAN}Note: This link expires in 7 days.${NC}"
+        echo -e ""
+    else
+        talk "[FAIL] Gofile upload failed for $new_log_name" $LRED
+    fi
+
+    rm -f "$tmp_copy"
+}
+
+upload_starchiver_log() {
+    local src_log="${HOME}/starchiver.log"
+    if [[ ! -f "$src_log" ]]; then
+        talk "No starchiver.log found at $src_log" $LRED
+        return
+    fi
+
+    local timestamp
+    timestamp=$(date +%F)
+    local ip_addr
+    ip_addr=$(curl -s https://api.ipify.org)
+    if [[ -z "$ip_addr" ]]; then
+        ip_addr="unknown_ip"
+    fi
+
+    local new_name="starchiver_${timestamp}_${ip_addr}.log"
+    local tmp_copy="${script_dir}/${new_name}"
+    cp "$src_log" "$tmp_copy" || {
+        talk "[FAIL] Could not copy starchiver.log to $tmp_copy" $LRED
+        return
+    }
+
+    talk "Uploading $new_name to Gofile…" $CYAN
+    local servers_resp server
+    servers_resp=$(curl -sSL https://api.gofile.io/servers)
+    server=$(echo "$servers_resp" | grep -Po '"servers":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
+    [[ -z "$server" ]] && \
+      server=$(echo "$servers_resp" | grep -Po '"serversAllZone":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
+    if [[ -z "$server" ]]; then
+        talk "[FAIL] Could not determine Gofile server" $LRED
+        rm -f "$tmp_copy"
+        return
+    fi
+
+    local upload_resp status_str download_url
+    upload_resp=$(curl -sSL \
+        -F "file=@${tmp_copy}" \
+        -F "expireDate=$(date -d '+7 days' +%Y-%m-%d)" \
+        "https://${server}.gofile.io/uploadFile")
+    status_str=$(echo "$upload_resp" | grep -Po '"status"\s*:\s*"\K[^"]+')
+    download_url=$(echo "$upload_resp" | grep -Po '"downloadPage"\s*:\s*"\K[^"]+')
+    if [[ "$status_str" == "ok" && -n "$download_url" ]]; then
+        talk "[SUCCESS]" $LGREEN
+    else
+        talk "[FAIL] Gofile upload failed for $new_name" $LRED
+        rm -f "$tmp_copy"
+        return
+    fi
+
+    rm -f "$tmp_copy"
+
+    echo -e ""
+    echo -e "${BG256_CYAN}${WHITE}${BOLD}==============================================${NC}"
+    echo -e "${BG256_CYAN}${WHITE}${BOLD}         STARCHIVER.LOG UPLOAD COMPLETE         ${NC}"
+    echo -e "${BG256_CYAN}${WHITE}${BOLD}==============================================${NC}"
+    talk ""
+    talk "${LGREEN}Share this URL with your Team Lead, so they can download your starchiver.log:${NC}"
+    talk ""
+    talk "${BG256_DARK_GREEN}    --->  $download_url${NC}" $WHITE$BOLD
+    echo -e ""
+    echo -e "${CYAN}Note: This link expires in 7 days.${NC}"
+    echo -e ""
+}
+
+logs_menu() {
+    while true; do
+        clear
+        echo -e ""
+        echo -e "${BOLD}${LGREEN}---==[ LOGS ]==---${NC}"
+        echo -e ""
+        echo -e "S) starchiver.log"
+        echo -e "A) app.log"
+        echo -e ""
+        echo -e "B) Back to Main Menu"
+        echo -e "X) Exit Starchiver"
+        echo -e ""
+        read -p "$(echo -e ${BOLD}Choose an option [S, A, B, X]:${NC}) " choice_log
+
+        case "$choice_log" in
+            [Ss])
+                while true; do
+                    clear
+                    echo -e ""
+                    echo -e "${BOLD}${LGREEN}---==[ STARCHIVER.LOG MENU ]==---${NC}"
+                    echo -e ""
+                    echo -e "V) View starchiver.log"
+                    echo -e "U) Upload starchiver.log"
+                    echo -e ""
+                    echo -e "B) Back to LOGS Menu"
+                    echo -e "X) Exit Starchiver"
+                    echo -e ""
+                    read -p "$(echo -e ${BOLD}Choose an option [V, U, B, X]:${NC}) " sv_choice
+
+                    case "$sv_choice" in
+                        [Vv])
+                            clear
+                            local logfile="${HOME}/starchiver.log"
+                            if [[ -f "$logfile" ]]; then
+                                local total_lines
+                                total_lines=$(wc -l < "$logfile")
+                                local start=1
+                                local chunk=40
+                                while (( start <= total_lines )); do
+                                    sed -n "${start},$((start+chunk-1))p" "$logfile"
+                                    echo
+                                    echo -e "${CYAN}Viewing starchiver.log (40 lines at a time). Press ENTER to advance, 'q' then ENTER to quit.${NC}"
+                                    read -r resp
+                                    if [[ $resp == "q" ]]; then
+                                        break
+                                    fi
+                                    start=$(( start + chunk ))
+                                done
+                                echo -e "${CYAN}End of starchiver.log.${NC}"
+                                sleep 1
+                            else
+                                echo -e "${LRED}No starchiver.log found.${NC}"
+                                sleep 1
+                            fi
+                            ;;
+                        [Uu])
+                            upload_starchiver_log
+                            echo -e ""
+                            while true; do
+                                read -p "$(echo -e ${BOLD}Press 'B' to return to STARCHIVER.LOG Menu or 'X' to Exit Starchiver${NC}): " return_s
+                                case "$return_s" in
+                                    [Bb]) break ;;
+                                    [Xx]) exit 0 ;;
+                                    *) echo -e "${YELLOW}Invalid input. Please press 'B' or 'X'.${NC}" ;;
+                                esac
+                            done
+                            ;;
+                        [Bb])
+                            break
+                            ;;
+                        [Xx]) 
+                            exit 0
+                            ;;
+                        *)
+                            echo -e "${YELLOW}Invalid choice. Please choose again.${NC}"
+                            sleep 1
+                            ;;
+                    esac
+                done
+                ;;
+            [Aa])
+                upload_log
+                echo -e ""
+                while true; do
+                    read -p "$(echo -e ${BOLD}Press 'B' to return to LOGS Menu or 'X' to Exit Starchiver${NC}): " return_a
+                    case "$return_a" in
+                        [Bb]) break ;;
+                        [Xx]) exit 0 ;;
+                        *) echo -e "${YELLOW}Invalid input. Please press 'B' or 'X'.${NC}" ;;
+                    esac
+                done
+                ;;
+            [Bb])
+                break
+                ;;
+            [Xx]) 
+                exit 0
+                ;;
+            *)
+                echo -e "${YELLOW}Invalid choice. Please choose again.${NC}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
 options_menu() {
     echo -e ""
     echo -e "${BOLD}${LGREEN}---==[ OPTIONS ]==---${NC}"
 
     if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
-        echo -n "${CYAN}  Calculating obsolete hashes directory sizeâ€¦${NC}"
-        reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
-        printf "\r\033[K"
+        # echo -n "Calculating obsolete hashes directory size, Please Wait..."
+        # reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
+        # printf "\r\033[K"
+        # echo -e "U) Upload Log"
         echo -e "S) Scan for Obsolete Hashes"
-        echo -e "R) Reclaim Disk Space ($reclaim_size)"
+        echo -e "R) Reclaim Disk Space"
         echo -e ""
         echo -e "Q) Quit"
+        echo -e ""
+        read -p "Choose an option [S, R, Q]: " choice
     else
+        # echo -e "U) Upload Log"
         echo -e "S) Scan for Obsolete Hashes"
         echo -e "${GRAY}R) Reclaim Disk Space (not available)${NC}"
         echo -e ""
         echo -e "Q) Quit"
+        echo -e ""
+        read -p "Choose an option [S, Q]: " choice
     fi
 
-    echo -e ""
-    read -p "Choose an option [S, R, Q]: " choice
-
     case "$choice" in
+        # [Uu])
+        #     upload_log
+        #     echo -e ""
+        #     while true; do
+        #         read -p "$(echo -e ${BOLD}Send 'X' to Exit Starchiver${NC}): " choice_q
+        #         case "$choice_q" in
+        #             [Xx]) break ;;
+        #             *) echo -e "${YELLOW}Invalid input. Please press 'X' to Exit Starchiver.${NC}" ;;
+        #         esac
+        #     done
+        #     ;;
         [Ss])
             if [[ -z "$path" ]]; then
                 path=$(search_data_folders | xargs)
@@ -829,11 +1085,12 @@ main_menu() {
         echo -e "${BOLD}T)${NC} ${BOLD}${LCYAN}TestNet${NC}"
         echo -e "${BOLD}C)${NC} ${BOLD}${LCYAN}Custom${NC}"
         echo -e ""
-        if [[ -f "${HOME}/starchiver.log" ]]; then
-            echo -e "${BOLD}L)${NC} ${BOLD}${LCYAN}View Previous Starchiver Log${NC}"
+        if [[ -f "${HOME}/starchiver.log" || -f "${path}/../logs/app.log" ]]; then
+            echo -e "${BOLD}L)${NC} ${BOLD}${LCYAN}Logs${NC}"
         else
-            echo -e "${GRAY}L) View Previous Starchiver Log (not available)${NC}"
+            echo -e "${GRAY}L) Logs (not available)${NC}"
         fi
+
         echo -e ""
         echo -e "${BOLD}O)${NC} ${BOLD}${LCYAN}Options${NC}"
         echo -e "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
@@ -860,30 +1117,7 @@ main_menu() {
                 network="$network_choice"
                 ;;
             [Ll])
-                local logfile="${HOME}/starchiver.log"
-                if [[ -f "$logfile" ]]; then
-                    local total
-                    total=$(wc -l < "$logfile")
-                    local start=1
-                    local chunk=40
-
-                    while (( start <= total )); do
-                        sed -n "${start},$((start+chunk-1))p" "$logfile"
-                        echo
-                        echo -e "${CYAN}Viewing starchiver.log (40 lines at a time). Press ENTER to advance, 'q' then ENTER to quit.${NC}"
-                        read -r resp
-                        if [[ $resp == "q" ]]; then
-                            break
-                        fi
-                        start=$(( start + chunk ))
-                    done
-
-                    echo -e "${CYAN}End of log.${NC}"
-                    sleep 1
-                else
-                    echo -e "${LRED}No starchiver.log found.${NC}"
-                    sleep 1
-                fi
+                logs_menu
                 continue
                 ;;
             [Oo])
@@ -903,7 +1137,7 @@ main_menu() {
     done
 
     if [[ -z "$path" ]]; then
-        path=$(search_data_folders | xargs) || { talk "No valid data folderâ€¦ Exiting." $LRED; exit 1; }
+        path=$(search_data_folders | xargs) || { talk "No valid data folder Exiting." $LRED; exit 1; }
     fi
 
     if [[ -z "$hashurl" ]]; then
@@ -1164,10 +1398,11 @@ T3_delete_ordinals_from_ordinal() {
 
     local base_path="$snapshot_dir/incremental_snapshot/ordinal"
     local info_dir="$snapshot_dir/snapshot_info"
+    local tmp_base_path="$snapshot_dir/incremental_snapshot_tmp/ordinal"
     local total_sets="${#parsed_start_ordinals[@]}"
     local any_deleted=false
 
-    talk "Deleting snapshots from ordinal $delete_from_ordinal and laterâ€¦" $YELLOW
+    talk "Deleting snapshots from ordinal $delete_from_ordinal and later" $YELLOW
 
     for (( i=0; i<total_sets; i++ )); do
         local start="${parsed_start_ordinals[$i]}"
@@ -1178,16 +1413,28 @@ T3_delete_ordinals_from_ordinal() {
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
             local dir="$base_path/$start"
             if [[ -d "$dir" ]]; then
-                talk "  â†’ Deleting ordinal set folder: $dir" $CYAN
+                talk "  - Deleting ordinal set folder: $dir" $CYAN
                 sudo rm -rf "$dir"
+                any_deleted=true
+            fi
+            local tmp_dir="$tmp_base_path/$start"
+            if [[ -d "$tmp_dir" ]]; then
+                talk "  - Deleting tmp ordinal set folder: $tmp_dir" $CYAN
+                sudo rm -rf "$tmp_dir"
                 any_deleted=true
             fi
             T3_delete_snapshot_info_in_range "$info_dir" "$delete_from_ordinal" "$end" "$is_final_set"
         elif (( start > delete_from_ordinal )); then
             local dir="$base_path/$start"
             if [[ -d "$dir" ]]; then
-                talk "  â†’ Deleting ordinal set folder: $dir" $CYAN
+                talk "  - Deleting ordinal set folder: $dir" $CYAN
                 sudo rm -rf "$dir"
+                any_deleted=true
+            fi
+            local tmp_dir="$tmp_base_path/$start"
+            if [[ -d "$tmp_dir" ]]; then
+                talk "  - Deleting tmp ordinal set folder: $tmp_dir" $CYAN
+                sudo rm -rf "$tmp_dir"
                 any_deleted=true
             fi
             T3_delete_snapshot_info_in_range "$info_dir" "$start" "$end" "$is_final_set"
@@ -1225,13 +1472,13 @@ T3_extract_snapshot_sets() {
 
     for ((i = start_index; i < total_sets; i++)); do
         if (( i == total_sets - 1 )); then
-            talk "Checking for updated hash.txt before final setâ€¦" $CYAN
+            talk "Checking for updated hash.txt before final set" $CYAN
             local tmp_hash="${HOME}/hash_file_new.txt"
             if wget -q -O "$tmp_hash" "$hash_url_base" && ! cmp -s "$tmp_hash" "$hash_file_path"; then
                 mv "$tmp_hash" "$hash_file_path"
                 T3_parse_hash_entries "$hash_file_path"
                 total_sets="${#parsed_filenames[@]}"
-                talk "  â†’ Detected new entries in hash.txt: now $total_sets sets total." $GREEN
+                talk "  - Detected new entries in hash.txt: now $total_sets sets total." $GREEN
             else
                 rm -f "$tmp_hash"
             fi
@@ -1339,7 +1586,7 @@ T3_extract_snapshot_sets() {
 
     if (( ${#ordinal_sets_with_extra[@]} )); then
         local missing_url="${hash_url_base%/*}/${network}_missing_ordinals.txt"
-        talk "Fetching list of potentially missing ordinals for ${network}â€¦" $LGRAY
+        talk "Fetching list of potentially missing ordinals for ${network}" $LGRAY
 
         local tmpf
         tmpf=$(mktemp)
@@ -1391,7 +1638,7 @@ T3_extract_snapshot_sets() {
 
             if [[ "$build_helper" =~ ^[Yy] ]]; then
                 helper_hash_index="${script_dir}/hash_index_helper.txt"
-                talk "Building helper hash indexâ€¦" $LCYAN
+                talk "Building helper hash index" $LCYAN
                 rebuild_hash_index_parallel \
                     "${DATA_FOLDER_PATH}/incremental_snapshot/hash" \
                     "$helper_hash_index"
@@ -1513,7 +1760,7 @@ build_helper_archive_for_set() {
         done
     fi
 
-    talk "Running tar for helper archive $tfâ€¦" $LCYAN
+    talk "Running tar for helper archive $tf" $LCYAN
     if ! tar --acls --xattrs --selinux --sparse --ignore-failed-read \
              -czf "$tf" -C "$DATA_FOLDER_PATH" -T "$sl"; then
         talk "[FAIL] Failed to create helper archive: $tf" $LRED
@@ -1522,7 +1769,7 @@ build_helper_archive_for_set() {
     talk "Helper archive for set $set created: ${#ords[@]} ordinals + snapshot_info files in $tf" $LCYAN
     HELPER_ARCHIVES_CREATED=$((HELPER_ARCHIVES_CREATED+1))
 
-    talk "Fetching Gofile serverâ€¦" $CYAN
+    talk "Fetching Gofile server" $CYAN
     local servers_resp server
     servers_resp=$(curl -sSL https://api.gofile.io/servers)
     server=$(echo "$servers_resp" | grep -Po '"servers":\s*\[\s*\{\s*"name"\s*:\s*"\K[^"]+')
