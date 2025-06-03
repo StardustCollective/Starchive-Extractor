@@ -1455,7 +1455,7 @@ T3_delete_ordinals_from_ordinal() {
     if [[ "$any_deleted" == true ]]; then
         talk "Snapshot deletion complete." $CYAN
     else
-        talk "No matching ordinal files or sets found to delete from $delete_from_ordinal." $LGRAY
+        talk "--> No matching ordinal files or sets found to delete from $delete_from_ordinal." $LGRAY
     fi
 }
 
