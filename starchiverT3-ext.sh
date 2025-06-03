@@ -325,9 +325,20 @@ download_verify_extract_tar() {
                 done
 
                 if [[ "$matched" == false ]]; then
-                    talk "Ordinal $snapshot_time is newer than the latest set. No need to Starchive at this time." $LCYAN
-                    show_completion_footer
-                    return
+                    if [[ "$delete_snapshots" == true ]]; then
+                        talk "Deleting ordinal set starting at $snapshot_time" $CYAN
+                        T3_delete_ordinals_from_ordinal "$extraction_path" "$snapshot_time"
+                        show_completion_footer
+                        return
+                    elif [[ "$overwrite_snapshots" == true ]]; then
+                        local last_index=$(( ${#parsed_start_ordinals[@]} - 1 ))
+                        start_index=$last_index
+                        talk "Overwrite mode: will re‐extract ordinal set index $start_index (Ordinal: ${parsed_start_ordinals[$start_index]})" $CYAN
+                    else
+                        talk "Ordinal $snapshot_time is newer than the latest set. No need to Starchive at this time." $LCYAN
+                        show_completion_footer
+                        return
+                    fi
                 fi
             else
                 start_index=$(T3_resolve_start_index_from_datetime "$snapshot_time" "$extraction_path" "$network_choice" | grep -E '^[0-9]+$' | head -n1)
