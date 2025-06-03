@@ -1,8 +1,8 @@
 #!/bin/bash
 
-exec 2>>"$HOME/starchiver.debug.log"
-set -x
-trap 'echo "ERROR at ${BASH_SOURCE[0]}:${LINENO} — `$BASH_COMMAND`" >>"$HOME/starchiver.debug.log"' ERR
+# exec 2>>"$HOME/starchiver.debug.log"
+# set -x
+# trap 'echo "ERROR at ${BASH_SOURCE[0]}:${LINENO} — `$BASH_COMMAND`" >>"$HOME/starchiver.debug.log"' ERR
 
 RED='\033[0;31m'
 LRED='\033[0;91m'
@@ -192,6 +192,8 @@ T3_EXTRACTED_COUNT=0
 T3_SKIPPED_COUNT=0
 export T3_EXTRACTED_COUNT
 export T3_SKIPPED_COUNT
+
+UPLOAD_TARGET=""
 
 set_hash_url() {
   case $network_choice in
@@ -857,9 +859,6 @@ upload_log() {
         echo -e "${BG256_BLUE}${WHITE}${BOLD}==========================================${NC}"
         echo -e "${BG256_BLUE}${WHITE}${BOLD}      Log Upload Complete      ${NC}"
         echo -e "${BG256_BLUE}${WHITE}${BOLD}==========================================${NC}"
-        # echo -e ""
-        # echo -e "${CYAN}The app.log has been uploaded successfully.${NC}"
-        # talk "Uploaded $new_log_name" $LGREEN
         talk ""
         talk "Forward this url to a Team Lead who can have this app.log analyzed..." $YELLOW
         talk ""
@@ -939,6 +938,37 @@ upload_starchiver_log() {
     echo -e ""
 }
 
+do_upload() {
+    local target="$1"
+
+    case "$target" in
+        starchiver.log)
+            if [[ ! -f "$HOME/starchiver.log" ]]; then
+                echo "ERROR: $HOME/starchiver.log not found."
+                exit 1
+            fi
+            upload_starchiver_log
+            ;;
+        app.log)
+            if [[ -z "$path" ]]; then
+                echo "No data-path set. Please select your snapshot folder so we can find app.log:"
+                path=$(search_data_folders | xargs) || exit 1
+            fi
+
+            upload_log
+            ;;
+        *)
+            echo "ERROR: Unsupported upload target: $target"
+            echo "Valid options are: starchiver.log or app.log"
+            exit 1
+            ;;
+    esac
+
+    echo
+    read -p "Press ENTER to exit…" _
+    exit 0
+}
+
 logs_menu() {
     while true; do
         clear
@@ -948,7 +978,7 @@ logs_menu() {
         echo -e "S) starchiver.log"
         echo -e "A) app.log"
         echo -e ""
-        echo -e "B) Back to Main Menu"
+        echo -e "B) Back to Options Menu"
         echo -e "X) Exit Starchiver"
         echo -e ""
         read -p "$(echo -e ${BOLD}Choose an option [S, A, B, X]:${NC}) " choice_log
@@ -980,9 +1010,9 @@ logs_menu() {
                                 while (( start <= total_lines )); do
                                     sed -n "${start},$((start+chunk-1))p" "$logfile"
                                     echo
-                                    echo -e "${CYAN}Viewing starchiver.log (40 lines at a time). Press ENTER to advance, 'q' then ENTER to quit.${NC}"
+                                    echo -e "${CYAN}Viewing starchiver.log (40 lines at a time). Press ENTER to advance, 'x' then ENTER to Exit Starchiver.${NC}"
                                     read -r resp
-                                    if [[ $resp == "q" ]]; then
+                                    if [[ $resp == "x" ]]; then
                                         break
                                     fi
                                     start=$(( start + chunk ))
@@ -1000,14 +1030,23 @@ logs_menu() {
                             while true; do
                                 read -p "$(echo -e ${BOLD}Press 'B' to return to STARCHIVER.LOG Menu or 'X' to Exit Starchiver${NC}): " return_s
                                 case "$return_s" in
-                                    [Bb]) break ;;
-                                    [Xx]) exit 0 ;;
-                                    *) echo -e "${YELLOW}Invalid input. Please press 'B' or 'X'.${NC}" ;;
+                                    [Bb]) 
+                                        clear
+                                        break 
+                                        ;;
+                                    [Xx]) 
+                                        exit 0 
+                                        ;;
+                                    *) 
+                                        echo -e "${YELLOW}Invalid input. Please press 'B' or 'X'.${NC}" 
+                                        ;;
                                 esac
                             done
                             ;;
                         [Bb])
-                            break
+                            clear
+                            options_menu
+                            return
                             ;;
                         [Xx]) 
                             exit 0
@@ -1025,13 +1064,21 @@ logs_menu() {
                 while true; do
                     read -p "$(echo -e ${BOLD}Press 'B' to return to LOGS Menu or 'X' to Exit Starchiver${NC}): " return_a
                     case "$return_a" in
-                        [Bb]) break ;;
-                        [Xx]) exit 0 ;;
-                        *) echo -e "${YELLOW}Invalid input. Please press 'B' or 'X'.${NC}" ;;
+                        [Bb]) 
+                            clear
+                            break 
+                            ;;
+                        [Xx]) 
+                            exit 0 
+                            ;;
+                        *) 
+                            echo -e "${YELLOW}Invalid input. Please press 'B' or 'X'.${NC}" 
+                            ;;
                     esac
                 done
                 ;;
             [Bb])
+                clear
                 break
                 ;;
             [Xx]) 
@@ -1046,42 +1093,60 @@ logs_menu() {
 }
 
 options_menu() {
+    while true; do
+        echo -e ""
+        echo -e "${BOLD}${LGREEN}---==[ Options Menu ]==---${NC}"
+
+        if [[ -f "${HOME}/starchiver.log" || -f "${path}/../logs/app.log" ]]; then
+            echo -e "${BOLD}L)${NC} ${BOLD}${LCYAN}Logs${NC}"
+        else
+            echo -e "${GRAY}L) Logs (not available)${NC}"
+        fi
+        echo -e "${BOLD}S)${NC} ${BOLD}${LCYAN}Scan for Obsolete Hashes${NC}"
+        echo -e ""
+        echo -e "${BOLD}X)${NC} ${BOLD}${LCYAN}Exit Starchiver${NC}"
+
+        read -p "Choose an option [L, S, X]: " choice
+
+        case "$choice" in
+            [Ll])
+                logs_menu
+                ;;
+            [Ss])
+                scan_menu
+                ;;
+            [Xx])
+                exit 0
+                ;;
+            *)
+                talk "Invalid choice. Exiting." "$LRED"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+scan_menu() {
     echo -e ""
-    echo -e "${BOLD}${LGREEN}---==[ OPTIONS ]==---${NC}"
+    echo -e "${BOLD}${LGREEN}---==[ Scan Menu ]==---${NC}"
 
     if [[ -d "$OBSOLETE_DIR" && $(ls -A "$OBSOLETE_DIR") ]]; then
-        # echo -n "Calculating obsolete hashes directory size, Please Wait..."
-        # reclaim_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
-        # printf "\r\033[K"
-        # echo -e "U) Upload Log"
         echo -e "S) Scan for Obsolete Hashes"
         echo -e "R) Reclaim Disk Space"
         echo -e ""
-        echo -e "Q) Quit"
+        echo -e "X) Exit Starchiver"
         echo -e ""
-        read -p "Choose an option [S, R, Q]: " choice
+        read -p "Choose an option [S, R, X]: " choice
     else
-        # echo -e "U) Upload Log"
         echo -e "S) Scan for Obsolete Hashes"
         echo -e "${GRAY}R) Reclaim Disk Space (not available)${NC}"
         echo -e ""
-        echo -e "Q) Quit"
+        echo -e "X) Exit Starchiver"
         echo -e ""
-        read -p "Choose an option [S, Q]: " choice
+        read -p "Choose an option [S, X]: " choice
     fi
 
     case "$choice" in
-        # [Uu])
-        #     upload_log
-        #     echo -e ""
-        #     while true; do
-        #         read -p "$(echo -e ${BOLD}Send 'X' to Exit Starchiver${NC}): " choice_q
-        #         case "$choice_q" in
-        #             [Xx]) break ;;
-        #             *) echo -e "${YELLOW}Invalid input. Please press 'X' to Exit Starchiver.${NC}" ;;
-        #         esac
-        #     done
-        #     ;;
         [Ss])
             if [[ -z "$path" ]]; then
                 path=$(search_data_folders | xargs)
@@ -1103,7 +1168,7 @@ options_menu() {
             fi
             exit 0
             ;;
-        [Qq])
+        [Xx])
             exit 0
             ;;
         *)
@@ -1141,9 +1206,9 @@ main_menu() {
 
         echo -e ""
         echo -e "${BOLD}O)${NC} ${BOLD}${LCYAN}Options${NC}"
-        echo -e "${BOLD}Q)${NC} ${BOLD}${LCYAN}Quit${NC}"
+        echo -e "${BOLD}X)${NC} ${BOLD}${LCYAN}Exit Starchiver${NC}"
         echo -e ""
-        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, L, O, Q]:) " choice
+        read -p "$(echo -e ${BOLD}Choose your adventure${NC} [M, I, T, C, L, O, X]:) " choice
         echo -e ""
 
         case $choice in
@@ -1166,13 +1231,13 @@ main_menu() {
                 ;;
             [Ll])
                 logs_menu
-                continue
+                return
                 ;;
             [Oo])
-                options_menu
+                scan_menu
                 exit 0
                 ;;
-            [Qq])
+            [Xx])
                 exit 0
                 ;;
             *)
@@ -1206,13 +1271,25 @@ main_menu() {
         exit 0
     fi
 
-    options_menu
+    scan_menu
     exit 0
 }
 
 parse_arguments() {
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
+            --upload)
+                shift
+                if [[ -z "$1" ]]; then
+                    echo "ERROR: --upload requires an argument (starchiver.log or app.log)"
+                    exit 1
+                fi
+                UPLOAD_TARGET="$1"
+                ;;
+            --options)
+                options_menu
+                exit 0
+                ;;
             --cleanup)
                 CLEANUP_MODE=true
                 CLEANUP_ONLY=true
@@ -1278,6 +1355,10 @@ parse_arguments() {
         esac
         shift
     done
+
+    if [[ -n "$UPLOAD_TARGET" ]]; then
+        do_upload "$UPLOAD_TARGET"
+    fi
 }
 
 T3_detect_archive_format() {
@@ -1984,7 +2065,7 @@ if [[ -n "$network_choice" ]]; then
     exit 0
   fi
 
-  options_menu
+  scan_menu
   exit 0
 fi
 
