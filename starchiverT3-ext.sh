@@ -1,5 +1,9 @@
 #!/bin/bash
 
+exec 2>>"$HOME/starchiver.debug.log"
+set -x
+trap 'echo "ERROR at ${BASH_SOURCE[0]}:${LINENO} — `$BASH_COMMAND`" >>"$HOME/starchiver.debug.log"' ERR
+
 RED='\033[0;31m'
 LRED='\033[0;91m'
 PINK='\033[0;95m'
@@ -250,6 +254,12 @@ download_verify_extract_tar() {
     local extraction_path=$2
     export DATA_FOLDER_PATH="$extraction_path"
 
+    echo ">>>> Entered download_verify_extract_tar with:" \
+         "hash_url_base='$hash_url_base'" \
+         "extraction_path='$extraction_path'" \
+         "start_line='${3:-1}'" \
+         >> "$HOME/starchiver.debug.log"
+
     local start_line=${3:-1}
     local hash_file_path="${HOME}/hash_file.txt"
     local extracted_hashes_log="${HOME}/extracted_hashes.log"
@@ -319,6 +329,12 @@ download_verify_extract_tar() {
                     if (( start <= snapshot_time && snapshot_time < end )); then
                         start_index=$i
                         talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start)" $GREEN
+                        if [[ "$delete_snapshots" == true ]]; then
+                            talk "Deleting snapshots from ordinal set $start and later" $CYAN
+                            T3_delete_ordinals_from_ordinal "$extraction_path" "$start"
+                            show_completion_footer
+                            return
+                        fi
                         matched=true
                         break
                     fi
@@ -326,8 +342,24 @@ download_verify_extract_tar() {
 
                 if [[ "$matched" == false ]]; then
                     if [[ "$delete_snapshots" == true ]]; then
-                        talk "Deleting ordinal set starting at $snapshot_time" $CYAN
-                        T3_delete_ordinals_from_ordinal "$extraction_path" "$snapshot_time"
+                        talk "delete_snapshots = true"
+                        local actual_start=""
+                        for ((j = 0; j < ${#parsed_start_ordinals[@]}; j++)); do
+                            local s=${parsed_start_ordinals[$j]}
+                            local c=${parsed_counts[$j]}
+                            local e=$((s + c))
+                            if (( s <= snapshot_time && snapshot_time < e )); then
+                                actual_start=$s
+                                break
+                            fi
+                        done
+                        if [[ -n "$actual_start" ]]; then
+                            talk "Deleting snapshots from ordinal set $actual_start and later" $CYAN
+                            T3_delete_ordinals_from_ordinal "$extraction_path" "$actual_start"
+                        else
+                            talk "Deleting snapshots from ordinal $snapshot_time and later" $CYAN
+                            T3_delete_ordinals_from_ordinal "$extraction_path" "$snapshot_time"
+                        fi
                         show_completion_footer
                         return
                     elif [[ "$overwrite_snapshots" == true ]]; then
@@ -484,6 +516,11 @@ download_verify_extract_tar() {
 list_starchive_containers() {
     local snapshot_time="$1"  # Format: YYYY-MM-DD.HH
     local data_path="$2"
+
+    echo ">>>> Entered list_starchive_containers with:" \
+         "snapshot_time='$snapshot_time'" \
+         "data_path='$data_path'" >> "$HOME/starchiver.debug.log"
+
     local hash_url_base=$(set_hash_url)
     local hash_file_path="${HOME}/hash_file.txt"
 
@@ -1299,7 +1336,7 @@ T3_resolve_start_index_from_datetime() {
         return
     fi
 
-    talk "Looking for ordinal set with timestamp â‰¤ $formatted_input_ts" $CYAN
+    talk "Looking for ordinal set with timestamp - $formatted_input_ts" $CYAN
 
     for ((i = total_sets - 1; i >= 0; i--)); do
         local start_ord="${parsed_start_ordinals[$i]}"
@@ -1312,7 +1349,7 @@ T3_resolve_start_index_from_datetime() {
         response=$(curl -s --max-time 4 "${api_url}/${test_ord}")
 
         if [[ -z "$response" || "$response" == "null" || "$response" =~ "504 Gateway" ]]; then
-            talk "[WARN] No response for ordinal $test_ord â€” skipping" $YELLOW
+            talk "[WARN] No response for ordinal $test_ord --> skipping" $YELLOW
             continue
         fi
 
@@ -1320,7 +1357,7 @@ T3_resolve_start_index_from_datetime() {
         ts=$(echo "$response" | sed -n 's/.*"timestamp":"\([^"]*\)".*/\1/p')
 
         if [[ -z "$ts" ]]; then
-            talk "[WARN] No timestamp in response for ordinal $test_ord â€” skipping" $YELLOW
+            talk "[WARN] No timestamp in response for ordinal $test_ord --> skipping" $YELLOW
             continue
         fi
 
@@ -1343,7 +1380,7 @@ T3_resolve_start_index_from_datetime() {
         fi
     done
 
-    talk "[WARN] No ordinal set found with timestamp â‰¤ $formatted_input_ts. Starting from beginning." $YELLOW
+    talk "[WARN] No ordinal set found with timestamp $formatted_input_ts. Starting from beginning." $YELLOW
     echo 0
 }
 
@@ -1455,7 +1492,7 @@ T3_delete_ordinals_from_ordinal() {
     if [[ "$any_deleted" == true ]]; then
         talk "Snapshot deletion complete." $CYAN
     else
-        talk "--> No matching ordinal files or sets found to delete from $delete_from_ordinal." $LGRAY
+        talk " - No matching ordinal files or sets found to delete from $delete_from_ordinal." $LGRAY
     fi
 }
 
@@ -1483,6 +1520,7 @@ T3_extract_snapshot_sets() {
 
     for ((i = start_index; i < total_sets; i++)); do
         if (( i == total_sets - 1 )); then
+            talk ""
             talk "Checking for updated hash.txt before final set" $CYAN
             local tmp_hash="${HOME}/hash_file_new.txt"
             if wget -q -O "$tmp_hash" "$hash_url_base" && ! cmp -s "$tmp_hash" "$hash_file_path"; then
@@ -1602,7 +1640,7 @@ T3_extract_snapshot_sets() {
         local tmpf
         tmpf=$(mktemp)
         if ! curl -sSL "$missing_url" -o "$tmpf"; then
-            talk "[WARN] Could not download missingâ€ordinals list; skipping helper step." $YELLOW
+            talk "[WARN] Could not download missing ordinals list; skipping helper step." $YELLOW
             rm -f "$tmpf"
             return
         fi
@@ -1633,12 +1671,12 @@ T3_extract_snapshot_sets() {
             talk ""
             talk "${BOLD}${CYAN}You May Have Needed Local Snapshot Files${NC}"
             talk ""
-            talk "Your node has ordinal files that arenâ€™t yet in the official Starchiver archives."
-            talk "By sharing these missing ordinals youâ€™ll help fill gaps and improve availability for everyone."
+            talk "Your node has ordinal files that aren't yet in the official Starchiver archives."
+            talk "By sharing these missing ordinals you'll help fill gaps and improve availability for everyone."
             talk ""
             talk "${BOLD}Sets with files you can contribute:${NC}"
             for set in "${sets_to_offer[@]}"; do
-                talk "  â€¢ Set ${set}" $CYAN
+                talk "  --> Set ${set}" $CYAN
             done
             talk ""
             talk "${YELLOW}This is optional, but your contributions make Starchiver more complete and reliable.${NC}"
@@ -1851,7 +1889,7 @@ move_obsolete_hashes() {
     local obsolete_file="$script_dir/hash_obsolete.txt"
 
     if [[ ! -f "$obsolete_file" ]]; then
-        talk "No obsoleteâ€hash list found; nothing to move." "$LGRAY"
+        talk "No obsolete hash list found; nothing to move." "$LGRAY"
         return
     fi
 
