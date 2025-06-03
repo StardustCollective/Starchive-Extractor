@@ -973,7 +973,7 @@ logs_menu() {
     while true; do
         clear
         echo -e ""
-        echo -e "${BOLD}${LGREEN}---==[ LOGS ]==---${NC}"
+        echo -e "${BOLD}${LGREEN}---==[ Logs Menu]==---${NC}"
         echo -e ""
         echo -e "S) starchiver.log"
         echo -e "A) app.log"
@@ -988,7 +988,7 @@ logs_menu() {
                 while true; do
                     clear
                     echo -e ""
-                    echo -e "${BOLD}${LGREEN}---==[ STARCHIVER.LOG MENU ]==---${NC}"
+                    echo -e "${BOLD}${LGREEN}---==[ starchiver.log MENU ]==---${NC}"
                     echo -e ""
                     echo -e "V) View starchiver.log"
                     echo -e "U) Upload starchiver.log"
@@ -1231,7 +1231,7 @@ main_menu() {
                 ;;
             [Ll])
                 logs_menu
-                return
+                continue
                 ;;
             [Oo])
                 scan_menu
