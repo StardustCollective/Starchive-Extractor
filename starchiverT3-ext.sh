@@ -334,8 +334,6 @@ download_verify_extract_tar() {
                         if [[ "$delete_snapshots" == true ]]; then
                             talk "Deleting snapshots from ordinal set $start and later" $CYAN
                             T3_delete_ordinals_from_ordinal "$extraction_path" "$start"
-                            show_completion_footer
-                            return
                         fi
                         matched=true
                         break
@@ -588,12 +586,16 @@ list_starchive_containers() {
 }
 
 convert_to_human_readable() {
-    local bytes=$1
-    if [ $bytes -lt 1024 ]; then
+    local bytes="${1:-0}"
+    if ! [[ "$bytes" =~ ^[0-9]+$ ]]; then
+        bytes=0
+    fi
+
+    if [ "$bytes" -lt 1024 ]; then
         echo "${bytes} bytes"
-    elif [ $bytes -lt 1048576 ]; then
+    elif [ "$bytes" -lt 1048576 ]; then
         echo "$(bc <<< "scale=3; $bytes/1024") KB"
-    elif [ $bytes -lt 1073741824 ]; then
+    elif [ "$bytes" -lt 1073741824 ]; then
         echo "$(bc <<< "scale=3; $bytes/1048576") MB"
     else
         echo "$(bc <<< "scale=3; $bytes/1073741824") GB"
@@ -1644,7 +1646,7 @@ T3_extract_snapshot_sets() {
 
         local expected_hash
         expected_hash=$(grep " $fname" "$hash_file_path" | awk '{print $1}')
-        if grep -q "$expected_hash" "$extracted_hashes_log"; then
+        if [[ -f "$extracted_hashes_log" ]] && grep -q "$expected_hash" "$extracted_hashes_log"; then
             talk "[OK] Archive already logged as extracted. Skipping: $fname" $GREEN
             T3_SKIPPED_COUNT=$((T3_SKIPPED_COUNT + 1))
             continue
