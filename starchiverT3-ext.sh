@@ -401,7 +401,10 @@ download_verify_extract_tar() {
         show_completion_footer
         return
     else
-        talk "Using ${BOLD}Tessellation v2${NC} archive extraction logic." $BLUE
+        talk "Using ${BOLD}Tessellation v2${NC} archive extraction logic..." $BLUE
+
+        rm -f "$extracted_hashes_log"
+        touch    "$extracted_hashes_log"
 
         if [[ "$datetime" == "true" ]]; then
             if [[ -z "$snapshot_time" ]]; then
@@ -511,6 +514,10 @@ download_verify_extract_tar() {
         rm -f "$tar_file_path"
         file_counter=$((file_counter + 1))
     done
+    rm -f "$hash_file_path"
+    rm -f "$extracted_hashes_log"
+    show_completion_footer
+    return
 }
 
 list_starchive_containers() {
@@ -579,6 +586,14 @@ list_starchive_containers() {
             delete_snapshots=true
             overwrite_snapshots=false
         fi
+
+        if [[ "$delete_snapshots" == true ]]; then
+            talk "Deleting snapshots starting from set ordinal $snapshot_time (matched on line $start_line_number)" $CYAN
+            cleanup_snapshots "$data_path"
+            show_completion_footer
+            return
+        fi
+
         download_verify_extract_tar "$hash_url_base" "$data_path" "$start_line_number"
     else
         echo "No matching Starchive containers found for time: $snapshot_time"
