@@ -603,7 +603,11 @@ list_starchive_containers() {
     done
 
     if [ "$found" == true ]; then
-        if [ "$dash_o" == true ]; then
+        if [[ -s "${HOME}/extracted_hashes.log" ]]; then
+            talk "Resume mode detected: skipping snapshot-deletion setup" $CYAN
+            delete_snapshots=false
+            overwrite_snapshots=false
+        elif [ "$dash_o" == true ]; then
             delete_snapshots=false
             overwrite_snapshots=true
         else
