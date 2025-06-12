@@ -403,8 +403,30 @@ download_verify_extract_tar() {
     else
         talk "Using ${BOLD}Tessellation v2${NC} archive extraction logic..." $BLUE
 
-        rm -f "$extracted_hashes_log"
-        touch    "$extracted_hashes_log"
+        if [[ -s "$extracted_hashes_log" ]]; then
+            echo ""
+            talk "Unfinished Starchiver run detected:" $YELLOW
+            while true; do
+                read -p "Do you want to resume where you left off or start fresh? [r/f]: " resume_choice
+                case $resume_choice in
+                    [Rr]* )
+                        talk "Resuming from previous extraction state..." $GREEN
+                        break
+                        ;;
+                    [Ff]* )
+                        talk "Starting fresh. Removing previous extraction log..." $CYAN
+                        rm -f "$extracted_hashes_log"
+                        break
+                        ;;
+                    * )
+                        talk "Please answer 'r' to resume or 'f' to start fresh." $LRED
+                        ;;
+                esac
+            done
+        elif [[ -f "$extracted_hashes_log" ]]; then
+            rm -f "$extracted_hashes_log"
+        fi
+        touch "$extracted_hashes_log"
 
         if [[ "$datetime" == "true" ]]; then
             if [[ -z "$snapshot_time" ]]; then
