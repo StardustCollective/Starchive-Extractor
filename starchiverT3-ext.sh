@@ -290,6 +290,7 @@ download_verify_extract_tar() {
                 case $resume_choice in
                     [Rr]* )
                         talk "Resuming from previous extraction state..." $GREEN
+                        delete_snapshots=false
                         break
                         ;;
                     [Ff]* )
@@ -411,6 +412,7 @@ download_verify_extract_tar() {
                 case $resume_choice in
                     [Rr]* )
                         talk "Resuming from previous extraction state..." $GREEN
+                        delete_snapshots=false
                         break
                         ;;
                     [Ff]* )
