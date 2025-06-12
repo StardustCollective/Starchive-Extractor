@@ -451,7 +451,7 @@ download_verify_extract_tar() {
         talk "No existing snapshots found. Performing full extraction." $LGREEN
         start_line=1
     else
-        if find "$extraction_path" -type f -size +0c -print -quit | grep -q .; then
+        if [[ "$delete_snapshots" == true ]] && find "$extraction_path" -type f -size +0c -print -quit | grep -q .; then
             cleanup_snapshots "$extraction_path"
         fi
     fi
