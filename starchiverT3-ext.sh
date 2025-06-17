@@ -2056,7 +2056,10 @@ move_obsolete_hashes() {
         dir_size=$(du -sh "$OBSOLETE_DIR" | cut -f1)
         talk "Obsolete hashes directory size: $dir_size" "$LGRAY"
 
-        if [[ "$ONLY_CLEANUP" != true ]]; then
+        if [[ "$ONLY_CLEANUP" == true || "$CLEANUP_ONLY" == true ]]; then
+            sudo rm -rf "$OBSOLETE_DIR"
+            talk "Obsolete hashes directory removed. Disk space reclaimed (auto cleanup)." $GREEN
+        else
             talk "Would you like to permanently remove the obsolete hashes and reclaim disk space? (y/N)" "$CYAN"
             read -r response
             if [[ "$response" =~ ^[Yy]$ ]]; then
