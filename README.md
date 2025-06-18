@@ -148,7 +148,7 @@ If you invoke `--datetime` **without** a value, the script will:
   ./starchiverT3-ext.sh --datetime "2024-05-01 z2359" --data-path /var/tessellation/dag-l0/data --cluster mainnet
   ```
 
-* **Ordinal-based start with an unattended ordinal hash cleanup**
+* **Ordinal-based start with an unattended ordinal hash --cleanup**
 
   ```
   ./starchiverT3-ext.sh --datetime 2539486 --data-path /var/tessellation/dag-l0/data --cluster testnet --cleanup
@@ -159,6 +159,64 @@ If you invoke `--datetime` **without** a value, the script will:
   ```
   ./starchiverT3-ext.sh --datetime --data-path /var/tessellation/dag-l0/data --cluster mainnet --nocleanup
   ```
+
+## Starchiver Session (tmux)
+
+When you run `./starchiverT3-ext.sh`, it will automatically start (or attach to) a **tmux** session named `Starchiver`. This lets the process keep running even if you disconnect your SSH session.
+
+### Why use tmux?
+
+* **Survive disconnects:** Long downloads or extractions won’t stop if your network drops.
+* **One-step attach:** The script handles session creation and attachment for you.
+
+---
+
+### Detach from the session
+
+To leave it running in the background:
+
+1. Press `Ctrl + b`
+2. Release, then press `d`
+
+You’ll see:
+
+```
+[detached from Starchiver]
+```
+
+---
+
+### Re-attach to the session
+
+**Option 1: Rerun the script**
+
+```bash
+./starchiverT3-ext.sh
+```
+
+If the `Starchiver` session already exists, the script will attach to it automatically. If the session has ended launching Starchiver will start a new session. 
+
+**Option 2: Direct tmux command**
+
+```bash
+tmux attach -t Starchiver
+```
+or shorthand:
+```bash
+tmux a -t Starchiver
+```
+
+---
+
+### Kill the session manually
+
+If you ever need to terminate it yourself:
+
+```bash
+tmux kill-session -t Starchiver
+```
+
+---
 
 ## Requirements
 - Linux Operating System with Bash Shell
