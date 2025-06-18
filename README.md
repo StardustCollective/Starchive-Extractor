@@ -93,6 +93,12 @@ Obsolete Hash Cleanup parameters can be used to automate performing this task or
    --datetime 2024-05-01.14
    ```
 
+   Use `YYYY-MM-DD` to specify year, month, day.
+
+   ```
+   --datetime 2024-05-01
+   ```
+
 3. **Date with Hour and Minute Offset**
    Append a space and `z`/`Z` plus HMM or HHMM to include minutes.
 
@@ -123,17 +129,22 @@ Obsolete Hash Cleanup parameters can be used to automate performing this task or
 
 ---
 
-#### Automatic Timestamp Calculation
+#### Automatic Snapshot Detection (when `--datetime` has no value)
 
-If you invoke `--datetime` **without** a value, the script will:
 
-1. Scan your data folder for the most recent local snapshot file.
-2. Take its filesystem timestamp and subtract one hour.
-3. Use that adjusted time as the start point—ensuring you pick up just before your last snapshot.
+  * If you invoke `--datetime` **without** providing a value, Starchive-Extractor will:
+
+      * **Find your latest local ordinal** --> Starchiver scans the `incremental_snapshot/ordinal/` folders and picks the highest-numbered file.
+
+      * **Map that ordinal to its Ordinal Set** --> Using your parsed start-and-count entries, it figures out which set contains that ordinal.
+
+      * **Start processing from that set** --> Processing begins at the first snapshot of the identified Ordinal Set.
 
 ```
---datetime
+./starchiverT3-ext.sh --datetime --data-path /var/tessellation/dag-l0/data --cluster mainnet
 ```
+If you use the `-d` or `-o` parameters, those will also reflect if Starchiver will DELETE or OVERWRITE based on the starting position.
+If `-d` nor `-o` are specified Starchiver will analyze the server's ordinal count per each set to determin if it will process or skip that set. If the server's ordinal set has the same or more ordinals then the archive, then it is assumed to have what it needs already and is skipped.
 
 ---
 
