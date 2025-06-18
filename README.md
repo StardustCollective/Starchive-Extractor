@@ -1,4 +1,4 @@
-# Starchive-Extractor
+# Starchive-Extractor v2.0 (Built for Tessellation v3)
 
 ## Description
 Starchive Extractor is a Bash script designed to efficiently download, verify, and extract node snapshots from Starchive files for the Constellation Network. This tool is especially useful for handling large data files from different network clusters, providing a streamlined process for managing data integrity and storage of the node snapshots.
