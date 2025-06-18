@@ -35,16 +35,21 @@ Run the script with optional parameters to specify the data path and network clu
 ./starchiverT3-ext.sh --data-path [PathToDataFolder] --cluster [Network]
 ```
 
-- `--data-path`: Sets the path to the folder where Starchive files will be stored (`/var/tessellation/dag-l0/data`).
+- `--data-path`: Sets the path to the Layer 0 data folder where snapshots are stored (`/var/tessellation/dag-l0/data`).
 - `--cluster`: Specifies the network cluster to download Starchive files from (`mainnet`, `integrationnet`, `testnet`).
 
 If no parameters are provided, the script enters an interactive mode, allowing you to choose options via a user-friendly menu.
 
-Optional switches that can also be used:
+---
+Switches that can be used to specify `DELETE` or `OVERWRITE` snapshots:
 
 - `-d`: Will automatically force the deletion of data snapshots before downloading/extracting Starchive's.
 - `-o`: Will automatically overwrite the data snapshots when extracting Starchive's.
 
+These will be performed at the starting position of ordinal set processing.
+
+---
+Obsolete Hash Cleanup parameters can be used to automate performing this task or not:
 - `--cleanup`
   Perform download & extraction, then immediately scan & purge obsolete hash files (no prompts), then exit.
 
@@ -54,14 +59,24 @@ Optional switches that can also be used:
 - `--onlycleanup`
   Skip download & extraction entirely; go straight to scanning & purging obsolete hashes, then exit.
 
+----------
 - `--upload <starchiver.log|app.log>`
-  Upload the specified log file to Gofile.io and print a download URL that can be shared with a Team Lead to help assist and/or troubleshoot. Uploaded files will expire after 7 days.
+  Upload the specified log file to Gofile.io and print a download URL that can be shared with a Team Lead, to help assist and/or troubleshoot.
 
+  Uploaded files will expire after 7 days.
+
+  The current options that can be submitted are `starchiver.log` or the Tessellation `app.log`.
+  
+----------
 - `--options`
   Show the interactive **Options** menu (same as choosing “O” interactively in the full main menu).
 
+  This menu shows options that do not need the Layer 0 node service turned off to use them.
+
+----------
 - `--datetime`: Allows for flexible specification of the date and time or ordinal for which you want to start processing Ordinal Sets. This parameter supports several formats, enabling precise control over the extraction process based on specific or relative timestamps.
 
+----------
 #### --datetime Formats Supported
 
 1. **Unix Timestamp**
@@ -160,6 +175,7 @@ If you invoke `--datetime` **without** a value, the script will:
   ./starchiverT3-ext.sh --datetime --data-path /var/tessellation/dag-l0/data --cluster mainnet --nocleanup
   ```
 
+----------
 ## Starchiver Session (tmux)
 
 When you run `./starchiverT3-ext.sh`, it will automatically start (or attach to) a **tmux** session named `Starchiver`. This lets the process keep running even if you disconnect your SSH session.
