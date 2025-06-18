@@ -12,7 +12,7 @@ Starchive Extractor is a Bash script designed to efficiently download, verify, a
 - Customizable paths for data storage.
 
 ## Installation
-Ensure you have `bash`, `curl`, `wget`, `pv`, `tar`, `sha256sum`, and `bc` installed on your system. Most of these tools are typically pre-installed on Linux systems.
+Ensure you have `bash`, `curl`, `wget`, `pv`, `tar`, `sha256sum`, `tmux` and `bc` installed on your system. Most of these tools are typically pre-installed on Linux systems.
 If Starchiver detects that any of these dependencies do not exit, it will try to automatically install them.
 
 **1. Download Starchiver and make sure it is executable:**
