@@ -46,13 +46,13 @@ Optional switches that can also be used:
 - `-o`: Will automatically overwrite the data snapshots when extracting Starchive's.
 
 - `--cleanup`
-  Perform download → extract, then immediately scan & purge obsolete hash files (no prompts), then exit.
+  Perform download & extraction, then immediately scan & purge obsolete hash files (no prompts), then exit.
 
 - `--nocleanup`
-  Run download & extract only; leave any obsolete hashes in place, then exit.
+  Perform download & extraction only; leave any obsolete hashes in place, then exit.
   
 - `--onlycleanup`
-  Skip download & extract entirely—go straight to scanning & purging obsolete hashes, then exit.
+  Skip download & extraction entirely; go straight to scanning & purging obsolete hashes, then exit.
 
 - `--upload <starchiver.log|app.log>`
   Upload the specified log file to Gofile.io and print a download URL that can be shared with a Team Lead to help assist and/or troubleshoot. Uploaded files will expire after 7 days.
