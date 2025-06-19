@@ -670,9 +670,12 @@ search_data_folders() {
     find / -maxdepth 5 -type d -name "snapshot" -path "*/data/snapshot" -printf '%h\n' 2>/dev/null > "$temp_file"
 
     if [ ! -s "$temp_file" ]; then
-        echo "No 'data' folders with 'snapshot' found." >&2
+        echo "'snapshot' folders not found in default locations." >&2
+        read -p "Enter the path of your data folder: " directory >&2
+        directory=$(echo "$directory" | xargs)
+        echo "$directory"
         rm -f "$temp_file"
-        return 1
+        return 0
     else
         echo "" >&2
         echo "Select a snapshot data folder path:" >&2
