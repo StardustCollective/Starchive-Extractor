@@ -1550,7 +1550,13 @@ T3_delete_ordinals_from_ordinal() {
 
     if [[ ! -d "$snapshot_dir" ]]; then
         talk "[ERROR] snapshot_dir does not exist: $snapshot_dir" $LRED
-        return
+        while true; do
+            read -r -p "Press 'X' to exit Starchiver: " choice
+            case "$choice" in
+                [Xx]) exit 1 ;;
+                *) talk "Invalid input. Please press 'X' to exit." $LRED ;;
+            esac
+        done
     fi
 
     if [[ "$IS_T3_MODE" == true && "$delete_snapshots" == true && "$datetime" != true ]]; then
