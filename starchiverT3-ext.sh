@@ -112,6 +112,11 @@ install_tools() {
         talk "pv could not be found, installing..." $GREEN
         sudo apt-get install -y pv
     fi
+
+    if ! command -v bc &> /dev/null; then
+        talk "bc could not be found, installing..." $GREEN
+        sudo apt-get install -y bc
+    fi
 }
 
 install_tools
@@ -256,11 +261,11 @@ download_verify_extract_tar() {
     local extraction_path=$2
     export DATA_FOLDER_PATH="$extraction_path"
 
-    echo ">>>> Entered download_verify_extract_tar with:" \
-         "hash_url_base='$hash_url_base'" \
-         "extraction_path='$extraction_path'" \
-         "start_line='${3:-1}'" \
-         >> "$HOME/starchiver.debug.log"
+    # echo ">>>> Entered download_verify_extract_tar with:" \
+    #      "hash_url_base='$hash_url_base'" \
+    #      "extraction_path='$extraction_path'" \
+    #      "start_line='${3:-1}'" \
+    #      >> "$HOME/starchiver.debug.log"
 
     local start_line=${3:-1}
     local hash_file_path="${HOME}/hash_file.txt"
