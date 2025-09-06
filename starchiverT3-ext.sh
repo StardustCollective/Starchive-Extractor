@@ -319,8 +319,20 @@ download_verify_extract_tar() {
                 talk "Latest snapshot detected: $latest_ord" $GREEN
                 snapshot_time="$latest_ord"
             else
-                talk "[FAIL] Could not detect latest snapshot. Exiting." $LRED
-                exit 1
+                echo ""
+                talk "${YELLOW}No previous snapshot files were found at:${NC}" $BOLD
+                talk "  $extraction_path" $LGRAY
+                echo ""
+                talk "${CYAN}Proceed with a ${BOLD}FULL extraction from the beginning (ordinal set 0)${NC}${CYAN}?${NC}" $CYAN
+                read -p "$(echo -e ${BOLD}[y/N]: ${NC}) " confirm_full
+                if [[ "$confirm_full" =~ ^[Yy]$ ]]; then
+                    talk "Starting a full extraction from the beginning…" $GREEN
+                    datetime=false
+                    start_index=0
+                else
+                    talk "User declined. Exiting without changes." $RED
+                    exit 0
+                fi
             fi
         fi
 
@@ -443,12 +455,26 @@ download_verify_extract_tar() {
                     snapshot_time=$(date -d "$(stat -c %y "$latest_snapshot")" -1 hour "+%Y-%m-%d.%H")
                     echo "The adjusted snapshot time is $snapshot_time"
                 else
-                    echo "No valid snapshot found."
-                    exit 1
+                    echo ""
+                    echo "No previous snapshot files were found at:"
+                    echo "  ${extraction_path}"
+                    echo ""
+                    echo "Proceed with a FULL extraction from the beginning to this path?"
+                    read -p "[y/N]: " confirm_full_v2
+                    if [[ "$confirm_full_v2" =~ ^[Yy]$ ]]; then
+                        echo "Starting a full extraction from the beginning…"
+                        datetime=false
+                    else
+                        echo "User declined. Exiting without changes."
+                        exit 0
+                    fi
                 fi
             fi
-            list_starchive_containers "$snapshot_time" "$extraction_path"
-            exit 0
+
+            if [[ "$datetime" == "true" ]]; then
+                list_starchive_containers "$snapshot_time" "$extraction_path"
+                exit 0
+            fi
         fi
     fi
 
