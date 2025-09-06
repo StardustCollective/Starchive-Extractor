@@ -259,13 +259,16 @@ download_verify_extract_tar() {
     > "${HOME}/starchiver.log"
     local hash_url_base=$1
     local extraction_path=$2
-    export DATA_FOLDER_PATH="$extraction_path"
 
-    # echo ">>>> Entered download_verify_extract_tar with:" \
-    #      "hash_url_base='$hash_url_base'" \
-    #      "extraction_path='$extraction_path'" \
-    #      "start_line='${3:-1}'" \
-    #      >> "$HOME/starchiver.debug.log"
+    if [[ ! -d "$extraction_path" ]]; then
+        talk "Target data path not found: $extraction_path — creating it now..." $YELLOW
+        if ! sudo mkdir -p "$extraction_path"; then
+            talk "[FAIL] Unable to create $extraction_path" $LRED
+            exit 1
+        fi
+    fi
+
+    export DATA_FOLDER_PATH="$extraction_path"
 
     local start_line=${3:-1}
     local hash_file_path="${HOME}/hash_file.txt"
@@ -561,7 +564,7 @@ download_verify_extract_tar() {
             fi
         fi
         
-        talk "Extracting Starchive:" $BOLD
+        talk "Extracting Starchive to: $extraction_path" $BOLD
         sudo pv "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         echo -e "\n${BOLD}$file_counter of $total_files Starchives extracted successfully.${NC}"
 
@@ -704,6 +707,17 @@ search_data_folders() {
         echo "'snapshot' folders not found in default locations." >&2
         read -p "Enter the path of your data folder: " directory >&2
         directory=$(echo "$directory" | xargs)
+        if [[ ! -d "$directory" ]]; then
+            read -p "Path does not exist. Create it now? [y/N]: " mkdir_ans >&2
+            if [[ "$mkdir_ans" =~ ^[Yy]$ ]]; then
+                if ! sudo mkdir -p "$directory"; then
+                    echo "Failed to create directory." >&2
+                    rm -f "$temp_file"; return 1
+                fi
+            else
+                rm -f "$temp_file"; return 1
+            fi
+        fi
         echo "$directory"
         rm -f "$temp_file"
         return 0
@@ -722,6 +736,17 @@ search_data_folders() {
             if [ "$selection" -eq 0 ]; then
                 read -r -p "Enter the path of the data folder: " directory >&2
                 directory=$(echo "$directory" | xargs)
+                if [[ ! -d "$directory" ]]; then
+                    read -p "Path does not exist. Create it now? [y/N]: " mkdir_ans >&2
+                    if [[ "$mkdir_ans" =~ ^[Yy]$ ]]; then
+                        if ! sudo mkdir -p "$directory"; then
+                            echo "Failed to create directory." >&2
+                            return 1
+                        fi
+                    else
+                        return 1
+                    fi
+                fi
                 echo "$directory"
             elif [ -s "$temp_file" ] && [ "$selection" -gt 0 ] && [ "$selection" -le $(wc -l < "$temp_file") ]; then
                 local selected_folder=$(sed "${selection}q;d" "$temp_file" | tr -d '\n')
@@ -1783,7 +1808,7 @@ T3_extract_snapshot_sets() {
             talk "${BOLD}${BG256_DARK_GREEN}    + Hash verified +    ${NC}" $FG256_SPRING_GREEN
         fi
 
-        talk "Extracting $fname..." $LGRAY
+        talk "Extracting $fname to: $extraction_path..." $LGRAY
         sudo pv --force "$tar_file_path" | sudo tar --overwrite -xzf - -C "$extraction_path"
         if [ $? -eq 0 ]; then
             echo "$expected_hash" >> "$extracted_hashes_log"
