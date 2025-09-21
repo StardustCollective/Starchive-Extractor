@@ -346,13 +346,11 @@ download_verify_extract_tar() {
                 local matched=false
                 for ((i = 0; i < ${#parsed_start_ordinals[@]}; i++)); do
                     local start=${parsed_start_ordinals[$i]}
-                    local count=${parsed_counts[$i]}
-                    local end=$((start + count))
+                    local end_incl=${parsed_end_ordinals[$i]}
 
-
-                    if (( start <= snapshot_time && snapshot_time < end )); then
+                    if (( start <= snapshot_time && snapshot_time <= end_incl )); then
                         start_index=$i
-                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start)" $GREEN
+                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start..$end_incl)" $GREEN
                         if [[ "$delete_snapshots" == true ]]; then
                             talk "Deleting snapshots from ordinal set $start and later" $CYAN
                             T3_delete_ordinals_from_ordinal "$extraction_path" "$start"
@@ -368,9 +366,8 @@ download_verify_extract_tar() {
                         local actual_start=""
                         for ((j = 0; j < ${#parsed_start_ordinals[@]}; j++)); do
                             local s=${parsed_start_ordinals[$j]}
-                            local c=${parsed_counts[$j]}
-                            local e=$((s + c))
-                            if (( s <= snapshot_time && snapshot_time < e )); then
+                            local e_incl=${parsed_end_ordinals[$j]}
+                            if (( s <= snapshot_time && snapshot_time <= e_incl )); then
                                 actual_start=$s
                                 break
                             fi
@@ -389,7 +386,8 @@ download_verify_extract_tar() {
                         start_index=$last_index
                         talk "Overwrite mode: will re‐extract ordinal set index $start_index (Ordinal: ${parsed_start_ordinals[$start_index]})" $CYAN
                     else
-                        talk "Ordinal $snapshot_time is newer than the latest set. No need to Starchive at this time." $LCYAN
+                        local last_end="${parsed_end_ordinals[$(( ${#parsed_end_ordinals[@]} - 1 ))]}"
+                        talk "Ordinal $snapshot_time is newer than the latest set (last end = $last_end). No need to Starchive at this time." $LCYAN
                         show_completion_footer
                         return
                     fi
@@ -1492,6 +1490,7 @@ T3_parse_hash_entries() {
     local hash_file_path="$1"
     parsed_start_ordinals=()
     parsed_counts=()
+    parsed_end_ordinals=()
     parsed_filenames=()
 
     while IFS= read -r line; do
@@ -1500,12 +1499,13 @@ T3_parse_hash_entries() {
         if [[ "$fname" =~ -s([0-9]+)-c([0-9]+)(-e([0-9]+))?\.tar\.gz$ ]]; then
             local start="${BASH_REMATCH[1]}"
             local count="${BASH_REMATCH[2]}"
-            local end="${BASH_REMATCH[4]}"
-            if [ -z "$end" ]; then
-                end=$((start + count - 1))
+            local end_incl="${BASH_REMATCH[4]}"
+            if [[ -z "$end_incl" ]]; then
+                end_incl=$((start + count - 1))
             fi
             parsed_start_ordinals+=("$start")
             parsed_counts+=("$count")
+            parsed_end_ordinals+=("$end_incl")
             parsed_filenames+=("$fname")
         fi
     done < "$hash_file_path"
@@ -1656,8 +1656,7 @@ T3_delete_ordinals_from_ordinal() {
 
     for (( i=0; i<total_sets; i++ )); do
         local start="${parsed_start_ordinals[$i]}"
-        local count="${parsed_counts[$i]}"
-        local end=$((start + count - 1))
+        local end="${parsed_end_ordinals[$i]}"
         local is_final_set=$([[ $i -eq $((total_sets - 1)) ]] && echo "true" || echo "false")
 
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
