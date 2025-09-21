@@ -226,65 +226,6 @@ if [[ -z "$STARCHIVER_SKIP_TMUX_GATE" ]]; then
   fi
 fi
 
-case "$TMUX_MODE" in
-  outside)
-    if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
-      echo -e "\nA Starchiver tmux session named '$SESSION_NAME' already exists."
-      echo -e "What would you like to do?"
-      echo -e "  R) Re-attach to existing session"
-      echo -e "  K) Kill the session and start fresh"
-      echo -e "  M) Return to main menu"
-      echo -n "Choose [R/K/M]: "
-      read -r choice
-      case "$choice" in
-        [Rr])
-          $TMUX_CMD set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
-          exec env -u TMUX $TMUX_CMD attach -t "$SESSION_NAME"
-          ;;
-        [Kk])
-          echo "Killing existing Starchiver session..."
-          $TMUX_CMD kill-session -t "$SESSION_NAME"
-          exec env -u TMUX $TMUX_CMD new-session \
-            -s "$SESSION_NAME" \
-            -n starchiver \
-            -e STARCHIVER_ARGS="${ARGS[*]}" \
-            "$0" "${ARGS[@]}"
-          ;;
-        [Mm])
-          echo "Returning to main menu..."
-          main_menu
-          exit 0
-          ;;
-        *)
-          echo "Invalid choice. Returning to main menu."
-          main_menu
-          exit 0
-          ;;
-      esac
-    else
-      exec env -u TMUX $TMUX_CMD new-session \
-        -s "$SESSION_NAME" \
-        -n starchiver \
-        -e STARCHIVER_ARGS="${ARGS[*]}" \
-        "$0" "${ARGS[@]}"
-    fi
-    ;;
-  inside)
-    if [[ -n "$TMUX" ]]; then
-      tmux set -g mouse off
-      tmux set-option -g history-limit 1000000
-      tmux set -g status on
-      tmux set-option -g status-style bg=colour17,fg=colour250
-      tmux set-window-option -g window-status-format ""
-      tmux set-window-option -g window-status-current-format ""
-      tmux set-option -g status-left-length 50
-      tmux set-option -g status-left '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
-      tmux set-option -g status-right-length 80
-      tmux set-option -g status-right '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
-    fi
-    ;;
-esac
-
 if [[ -n "$TMUX" ]]; then
   tmux set -g mouse off
   tmux set-option -g history-limit 1000000
