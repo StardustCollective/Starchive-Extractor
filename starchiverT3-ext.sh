@@ -135,7 +135,7 @@ SOCKET_PATH="$SOCKET_DIR/${SESSION_NAME}.sock"
 
 TMUX_CMD="tmux -S $SOCKET_PATH"
 
-if [ -z "$TMUX" ] && [[ -t 0 && -t 1 && -t 2 ]]; then
+if [ -z "$TMUX" ] && [[ -t 0 && -t 1 && -t 2 ]] && [[ $- == *i* ]]; then
   if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
     tmux set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
     exec $TMUX_CMD attach -t "$SESSION_NAME"
@@ -148,7 +148,7 @@ if [ -z "$TMUX" ] && [[ -t 0 && -t 1 && -t 2 ]]; then
   fi
 fi
 
-if [[ -t 1 ]]; then
+if [[ -n "$TMUX" ]]; then
   tmux set -g mouse off
   tmux set-option -g history-limit 1000000
 
