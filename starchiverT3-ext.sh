@@ -157,10 +157,20 @@ case "$TMUX_MODE" in
       tmux set-option -g status-style bg=colour17,fg=colour250
       tmux set-window-option -g window-status-format ""
       tmux set-window-option -g window-status-current-format ""
-      tmux set-option -g status-left-length  50
-      tmux set-option -g status-left  '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
-      tmux set-option -g status-right-length  80
+      tmux set-option -g status-left-length 50
+      tmux set-option -g status-left '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
+      tmux set-option -g status-right-length 80
       tmux set-option -g status-right '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+    else
+      if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
+        exec $TMUX_CMD attach -t "$SESSION_NAME"
+      else
+        exec $TMUX_CMD new-session \
+          -s "$SESSION_NAME" \
+          -n starchiver \
+          -e STARCHIVER_ARGS="${ARGS[*]}" \
+          "$0" "${ARGS[@]}"
+      fi
     fi
     ;;
   off)
