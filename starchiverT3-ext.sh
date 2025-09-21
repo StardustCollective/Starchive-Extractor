@@ -126,6 +126,7 @@ SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
 # talk "RUN STAMP: file=$SCRIPT_REALPATH sha256=${SCRIPT_SHA256:-unknown} pid=$$ tty=$(tty 2>/dev/null || echo 'none') tmux=${TMUX:-''}" $LGRAY
 
 SESSION_NAME="Starchiver"
+TMUX_MODE="inside" 
 
 ARGS=("$@")
 
@@ -135,23 +136,42 @@ SOCKET_PATH="$SOCKET_DIR/${SESSION_NAME}.sock"
 
 TMUX_CMD="tmux -S $SOCKET_PATH"
 
-if [ -z "$TMUX" ] && [[ -t 0 && -t 1 && -t 2 ]] && [[ $- == *i* ]]; then
-  if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
-    tmux set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
-    exec $TMUX_CMD attach -t "$SESSION_NAME"
-  else
-    exec $TMUX_CMD new-session \
-      -s "$SESSION_NAME" \
-      -n starchiver \
-      -e STARCHIVER_ARGS="${ARGS[*]}" \
-      "$0" "${ARGS[@]}"
-  fi
-fi
+case "$TMUX_MODE" in
+  outside)
+    if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
+      $TMUX_CMD set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
+      exec env -u TMUX $TMUX_CMD attach -t "$SESSION_NAME"
+    else
+      exec env -u TMUX $TMUX_CMD new-session \
+        -s "$SESSION_NAME" \
+        -n starchiver \
+        -e STARCHIVER_ARGS="${ARGS[*]}" \
+        "$0" "${ARGS[@]}"
+    fi
+    ;;
+  inside)
+    if [[ -n "$TMUX" ]]; then
+      tmux set -g mouse off
+      tmux set-option -g history-limit 1000000
+      tmux set -g status on
+      tmux set-option -g status-style bg=colour17,fg=colour250
+      tmux set-window-option -g window-status-format ""
+      tmux set-window-option -g window-status-current-format ""
+      tmux set-option -g status-left-length  50
+      tmux set-option -g status-left  '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
+      tmux set-option -g status-right-length  80
+      tmux set-option -g status-right '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+    fi
+    ;;
+  off)
+    ;;
+esac
 
 if [[ -n "$TMUX" ]]; then
   tmux set -g mouse off
   tmux set-option -g history-limit 1000000
 
+  tmux set -g status on
   tmux set-option -g status-style bg=colour17,fg=colour250
 
   tmux set-window-option -g window-status-format ""
@@ -185,6 +205,8 @@ export HELPER_ARCHIVES_CREATED
 declare -A missing_ordinals_by_set=()
 CLEANUP_MODE=false
 REVERSE_MODE=false
+LATEST_COUNT=0
+TMUX_DEDICATED=false
 OBSOLETE_DIR="${script_dir}/obsolete_hashes"
 
 path=""
@@ -403,7 +425,8 @@ download_verify_extract_tar() {
                         local __last_file="${parsed_filenames[$__last_idx]}"
                         local __last_start="${parsed_start_ordinals[$__last_idx]}"
                         local __last_end="${parsed_end_ordinals[$__last_idx]}"
-                        talk "Ordinal $snapshot_time is newer than the latest set (last=${__last_start}..${__last_end}, file=${__last_file})." $LCYAN
+                        talk
+                        talk "Ordinal $snapshot_time is newer than the latest set (${__last_file})." $LCYAN
                         talk "No need to Starchive at this time." $LCYAN
                         show_completion_footer
                         return
@@ -510,10 +533,19 @@ download_verify_extract_tar() {
     local current_file=$((start_line - 1))
     local file_counter=$start_line
 
-    if [[ "$REVERSE_MODE" == true ]]; then
-        seq_args="$(seq $(wc -l < "$hash_file_path") -1 $start_line)"
+    if (( LATEST_COUNT > 0 )); then
+        local first_line=$total_files
+        local last_line=$(( total_files - LATEST_COUNT + 1 ))
+        if (( last_line < 1 )); then last_line=1; fi
+        seq_args="$(seq $first_line -1 $last_line)"
+        REVERSE_MODE=true
+        file_counter=$last_line
     else
-        seq_args="$(seq $start_line $(wc -l < "$hash_file_path"))"
+        if [[ "$REVERSE_MODE" == true ]]; then
+            seq_args="$(seq $total_files -1 $start_line)"
+        else
+            seq_args="$(seq $start_line $total_files)"
+        fi
     fi
 
     for line_num in $seq_args; do
@@ -1478,6 +1510,26 @@ parse_arguments() {
             --reverse)
                 REVERSE_MODE=true
                 ;;
+            --latest)
+                shift
+                if [[ -z "$1" || ! "$1" =~ ^[0-9]+$ || "$1" -le 0 ]]; then
+                    echo "ERROR: --latest requires a positive integer (e.g., --latest 2)"
+                    exit 1
+                fi
+                LATEST_COUNT="$1"
+                ;;
+            --tmux)
+                shift
+                case "$1" in
+                    inside|outside|off)
+                        TMUX_MODE="$1"
+                        ;;
+                    *)
+                        echo "ERROR: --tmux requires one of: inside|outside|off"
+                        exit 1
+                        ;;
+                esac
+                ;;
             *)
                 echo "Unknown option: $1"
                 exit 1
@@ -1736,10 +1788,18 @@ T3_extract_snapshot_sets() {
 
     local total_sets="${#parsed_filenames[@]}"
 
-    if [[ "$REVERSE_MODE" == true ]]; then
-        seq_args="$(seq $((total_sets - 1)) -1 $start_index)"
+    if (( LATEST_COUNT > 0 )); then
+        local end_idx=$(( total_sets - 1 ))
+        local begin_idx=$(( total_sets - LATEST_COUNT ))
+        if (( begin_idx < 0 )); then begin_idx=0; fi
+        if (( begin_idx < start_index )); then begin_idx=$start_index; fi
+        seq_args="$(seq $end_idx -1 $begin_idx)"
     else
-        seq_args="$(seq $start_index $((total_sets - 1)))"
+        if [[ "$REVERSE_MODE" == true ]]; then
+            seq_args="$(seq $((total_sets - 1)) -1 $start_index)"
+        else
+            seq_args="$(seq $start_index $((total_sets - 1)))"
+        fi
     fi
 
     for i in $seq_args; do
