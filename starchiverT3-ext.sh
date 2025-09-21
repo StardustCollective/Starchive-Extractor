@@ -2326,13 +2326,14 @@ process_hash_mode() {
 
             if [[ "$fname" =~ -e([0-9]+)\.tar\.gz$ ]]; then
                 latest="${BASH_REMATCH[1]}"
-            elif [[ "$fname" =~ -c([0-9]+)\.tar\.gz$ && "$fname" =~ -s([0-9]+)-c([0-9]+) ]]; then
+            elif [[ "$fname" =~ -s([0-9]+)-c([0-9]+)\.tar\.gz$ ]]; then
                 local start="${BASH_REMATCH[1]}"
                 local count="${BASH_REMATCH[2]}"
                 latest=$((start + count - 1))
             else
                 latest="0"
             fi
+
             echo "$latest"
             exit 0
             ;;
