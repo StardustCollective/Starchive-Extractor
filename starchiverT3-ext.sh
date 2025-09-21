@@ -1589,6 +1589,16 @@ parse_arguments() {
                         ;;
                 esac
                 ;;
+            --hash)
+                shift
+                HASH_MODE="${1:-}"
+                if [[ -z "$HASH_MODE" || "$HASH_MODE" =~ ^- ]]; then
+                    HASH_MODE="path"
+                    [[ "$1" =~ ^- ]] || true
+                else
+                    shift
+                fi
+                ;;
             *)
                 echo "Unknown option: $1"
                 exit 1
@@ -2294,7 +2304,57 @@ move_obsolete_hashes() {
     rm -f "$obsolete_file"
 }
 
+process_hash_mode() {
+    local hashurl
+    hashurl=$(set_hash_url) || { echo "unreachable"; exit 1; }
+
+    local hash_file_path="${HOME}/hash_file.txt"
+    if ! wget -q -O "$hash_file_path" "$hashurl"; then
+        echo "unreachable"
+        exit 1
+    fi
+
+    case "$HASH_MODE" in
+        path)
+            echo "$hash_file_path"
+            exit 0
+            ;;
+        latest)
+            local last_line fname latest
+            last_line=$(tail -n 1 "$hash_file_path")
+            fname=$(echo "$last_line" | awk '{print $2}')
+
+            if [[ "$fname" =~ -e([0-9]+)\.tar\.gz$ ]]; then
+                latest="${BASH_REMATCH[1]}"
+            elif [[ "$fname" =~ -c([0-9]+)\.tar\.gz$ && "$fname" =~ -s([0-9]+)-c([0-9]+) ]]; then
+                local start="${BASH_REMATCH[1]}"
+                local count="${BASH_REMATCH[2]}"
+                latest=$((start + count - 1))
+            else
+                latest="0"
+            fi
+            echo "$latest"
+            exit 0
+            ;;
+        *)
+            echo "unreachable"
+            exit 1
+            ;;
+    esac
+}
+
 parse_arguments "$@"
+
+if [[ "$ONLY_CLEANUP" == true ]]; then
+    if [[ -z "$path" ]]; then
+        talk "No data path supplied for --onlycleanup. Please select one:" $CYAN
+        path=$(search_data_folders | xargs) \
+            || { talk "No valid data folder selected. Exiting." $LRED; exit 1; }
+    fi
+    gather_obsolete_hashes_parallel
+    move_obsolete_hashes
+    exit 0
+fi
 
 if [[ "$ONLY_CLEANUP" == true ]]; then
     if [[ -z "$path" ]]; then
