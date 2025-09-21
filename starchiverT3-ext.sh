@@ -126,7 +126,7 @@ SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
 # talk "RUN STAMP: file=$SCRIPT_REALPATH sha256=${SCRIPT_SHA256:-unknown} pid=$$ tty=$(tty 2>/dev/null || echo 'none') tmux=${TMUX:-''}" $LGRAY
 
 SESSION_NAME="Starchiver"
-TMUX_MODE="inside" 
+TMUX_MODE="outside"
 
 ARGS=("$@")
 
@@ -138,9 +138,40 @@ TMUX_CMD="tmux -S $SOCKET_PATH"
 
 case "$TMUX_MODE" in
   outside)
+    # Always force dedicated Starchiver session
     if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
-      $TMUX_CMD set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
-      exec env -u TMUX $TMUX_CMD attach -t "$SESSION_NAME"
+      echo -e "\nA Starchiver tmux session named '$SESSION_NAME' already exists."
+      echo -e "What would you like to do?"
+      echo -e "  R) Re-attach to existing session"
+      echo -e "  K) Kill the session and start fresh"
+      echo -e "  M) Return to main menu"
+      echo -n "Choose [R/K/M]: "
+      read -r choice
+      case "$choice" in
+        [Rr])
+          $TMUX_CMD set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
+          exec env -u TMUX $TMUX_CMD attach -t "$SESSION_NAME"
+          ;;
+        [Kk])
+          echo "Killing existing Starchiver session..."
+          $TMUX_CMD kill-session -t "$SESSION_NAME"
+          exec env -u TMUX $TMUX_CMD new-session \
+            -s "$SESSION_NAME" \
+            -n starchiver \
+            -e STARCHIVER_ARGS="${ARGS[*]}" \
+            "$0" "${ARGS[@]}"
+          ;;
+        [Mm])
+          echo "Returning to main menu..."
+          main_menu
+          exit 0
+          ;;
+        *)
+          echo "Invalid choice. Returning to main menu."
+          main_menu
+          exit 0
+          ;;
+      esac
     else
       exec env -u TMUX $TMUX_CMD new-session \
         -s "$SESSION_NAME" \
@@ -161,19 +192,7 @@ case "$TMUX_MODE" in
       tmux set-option -g status-left '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
       tmux set-option -g status-right-length 80
       tmux set-option -g status-right '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
-    else
-      if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
-        exec $TMUX_CMD attach -t "$SESSION_NAME"
-      else
-        exec $TMUX_CMD new-session \
-          -s "$SESSION_NAME" \
-          -n starchiver \
-          -e STARCHIVER_ARGS="${ARGS[*]}" \
-          "$0" "${ARGS[@]}"
-      fi
     fi
-    ;;
-  off)
     ;;
 esac
 
