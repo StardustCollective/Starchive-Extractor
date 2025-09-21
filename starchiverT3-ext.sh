@@ -123,7 +123,7 @@ install_tools
 
 SCRIPT_REALPATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
-talk "RUN STAMP: file=$SCRIPT_REALPATH sha256=${SCRIPT_SHA256:-unknown} pid=$$ tty=$(tty 2>/dev/null || echo 'none') tmux=${TMUX:-''}" $LGRAY
+# talk "RUN STAMP: file=$SCRIPT_REALPATH sha256=${SCRIPT_SHA256:-unknown} pid=$$ tty=$(tty 2>/dev/null || echo 'none') tmux=${TMUX:-''}" $LGRAY
 
 SESSION_NAME="Starchiver"
 
@@ -298,9 +298,9 @@ download_verify_extract_tar() {
         T3_parse_hash_entries "$hash_file_path"
         talk "Total Starchiver sets available = ${#parsed_start_ordinals[@]}" $GREEN
         local __last_idx=$(( ${#parsed_start_ordinals[@]} - 1 ))
-        if (( __last_idx >= 0 )); then
-            talk "Latest set: file=${parsed_filenames[$__last_idx]} | range=${parsed_start_ordinals[$__last_idx]}..${parsed_end_ordinals[$__last_idx]} | count=${parsed_counts[$__last_idx]}" $LGRAY
-        fi
+        # if (( __last_idx >= 0 )); then
+        #     talk "Latest set: file=${parsed_filenames[$__last_idx]} | range=${parsed_start_ordinals[$__last_idx]}..${parsed_end_ordinals[$__last_idx]} | count=${parsed_counts[$__last_idx]}" $LGRAY
+        # fi
 
         if [[ -s "$extracted_hashes_log" ]]; then
             echo ""
@@ -403,7 +403,8 @@ download_verify_extract_tar() {
                         local __last_file="${parsed_filenames[$__last_idx]}"
                         local __last_start="${parsed_start_ordinals[$__last_idx]}"
                         local __last_end="${parsed_end_ordinals[$__last_idx]}"
-                        talk "Ordinal $snapshot_time is newer than the latest set (last=${__last_start}..${__last_end}, file=${__last_file}). No need to Starchive at this time." $LCYAN
+                        talk "Ordinal $snapshot_time is newer than the latest set (last=${__last_start}..${__last_end}, file=${__last_file})." $LCYAN
+                        talk "No need to Starchive at this time." $LCYAN
                         show_completion_footer
                         return
                     fi
