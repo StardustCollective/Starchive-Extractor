@@ -121,7 +121,12 @@ install_tools() {
 
 install_tools
 
+SCRIPT_REALPATH="$(realpath "$0" 2>/dev/null || echo "$0")"
+SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
+talk "RUN STAMP: file=$SCRIPT_REALPATH sha256=${SCRIPT_SHA256:-unknown} pid=$$ tty=$(tty 2>/dev/null || echo 'none') tmux=${TMUX:-''}" $LGRAY
+
 SESSION_NAME="Starchiver"
+
 ARGS=("$@")
 
 SOCKET_DIR="$HOME/.tmux"
@@ -130,7 +135,7 @@ SOCKET_PATH="$SOCKET_DIR/${SESSION_NAME}.sock"
 
 TMUX_CMD="tmux -S $SOCKET_PATH"
 
-if [ -z "$TMUX" ]; then
+if [ -z "$TMUX" ] && [[ -t 0 && -t 1 && -t 2 ]]; then
   if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
     tmux set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
     exec $TMUX_CMD attach -t "$SESSION_NAME"
@@ -143,21 +148,23 @@ if [ -z "$TMUX" ]; then
   fi
 fi
 
-tmux set -g mouse off
-tmux set-option -g history-limit 1000000
+if [[ -t 1 ]]; then
+  tmux set -g mouse off
+  tmux set-option -g history-limit 1000000
 
-tmux set-option -g status-style bg=colour17,fg=colour250
+  tmux set-option -g status-style bg=colour17,fg=colour250
 
-tmux set-window-option -g window-status-format ""
-tmux set-window-option -g window-status-current-format ""
+  tmux set-window-option -g window-status-format ""
+  tmux set-window-option -g window-status-current-format ""
 
-tmux set-option -g status-left-length  50
-tmux set-option -g status-left        \
-  '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
+  tmux set-option -g status-left-length  50
+  tmux set-option -g status-left        \
+    '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
 
-tmux set-option -g status-right-length  80
-tmux set-option -g status-right         \
-  '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+  tmux set-option -g status-right-length  80
+  tmux set-option -g status-right         \
+    '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+fi
 
 CORES=$(nproc)
 MAX_CONCURRENT_JOBS=$((CORES * 2))
@@ -177,6 +184,7 @@ HELPER_ARCHIVES_CREATED=0
 export HELPER_ARCHIVES_CREATED
 declare -A missing_ordinals_by_set=()
 CLEANUP_MODE=false
+REVERSE_MODE=false
 OBSOLETE_DIR="${script_dir}/obsolete_hashes"
 
 path=""
@@ -289,6 +297,10 @@ download_verify_extract_tar() {
     if [[ "$IS_T3_MODE" == true ]]; then
         T3_parse_hash_entries "$hash_file_path"
         talk "Total Starchiver sets available = ${#parsed_start_ordinals[@]}" $GREEN
+        local __last_idx=$(( ${#parsed_start_ordinals[@]} - 1 ))
+        if (( __last_idx >= 0 )); then
+            talk "Latest set: file=${parsed_filenames[$__last_idx]} | range=${parsed_start_ordinals[$__last_idx]}..${parsed_end_ordinals[$__last_idx]} | count=${parsed_counts[$__last_idx]}" $LGRAY
+        fi
 
         if [[ -s "$extracted_hashes_log" ]]; then
             echo ""
@@ -345,13 +357,12 @@ download_verify_extract_tar() {
                 local matched=false
                 for ((i = 0; i < ${#parsed_start_ordinals[@]}; i++)); do
                     local start=${parsed_start_ordinals[$i]}
-                    local count=${parsed_counts[$i]}
-                    local end=$((start + count))
+                    local end_incl=${parsed_end_ordinals[$i]}
 
-
-                    if (( start <= snapshot_time && snapshot_time < end )); then
+                    if (( start <= snapshot_time && snapshot_time <= end_incl )); then
                         start_index=$i
-                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start)" $GREEN
+                        local __file="${parsed_filenames[$i]}"
+                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (file=${__file}, range=${start}..${end_incl})" $GREEN
                         if [[ "$delete_snapshots" == true ]]; then
                             talk "Deleting snapshots from ordinal set $start and later" $CYAN
                             T3_delete_ordinals_from_ordinal "$extraction_path" "$start"
@@ -367,9 +378,8 @@ download_verify_extract_tar() {
                         local actual_start=""
                         for ((j = 0; j < ${#parsed_start_ordinals[@]}; j++)); do
                             local s=${parsed_start_ordinals[$j]}
-                            local c=${parsed_counts[$j]}
-                            local e=$((s + c))
-                            if (( s <= snapshot_time && snapshot_time < e )); then
+                            local e_incl=${parsed_end_ordinals[$j]}
+                            if (( s <= snapshot_time && snapshot_time <= e_incl )); then
                                 actual_start=$s
                                 break
                             fi
@@ -386,9 +396,14 @@ download_verify_extract_tar() {
                     elif [[ "$overwrite_snapshots" == true ]]; then
                         local last_index=$(( ${#parsed_start_ordinals[@]} - 1 ))
                         start_index=$last_index
-                        talk "Overwrite mode: will re‐extract ordinal set index $start_index (Ordinal: ${parsed_start_ordinals[$start_index]})" $CYAN
+                        talk "Overwrite mode: will re-extract set index $start_index (file=${parsed_filenames[$start_index]}, range=${parsed_start_ordinals[$start_index]}..${parsed_end_ordinals[$start_index]})" $CYAN
                     else
-                        talk "Ordinal $snapshot_time is newer than the latest set. No need to Starchive at this time." $LCYAN
+                        local last_end="${parsed_end_ordinals[$(( ${#parsed_end_ordinals[@]} - 1 ))]}"
+                        local __last_idx=$(( ${#parsed_end_ordinals[@]} - 1 ))
+                        local __last_file="${parsed_filenames[$__last_idx]}"
+                        local __last_start="${parsed_start_ordinals[$__last_idx]}"
+                        local __last_end="${parsed_end_ordinals[$__last_idx]}"
+                        talk "Ordinal $snapshot_time is newer than the latest set (last=${__last_start}..${__last_end}, file=${__last_file}). No need to Starchive at this time." $LCYAN
                         show_completion_footer
                         return
                     fi
@@ -494,7 +509,14 @@ download_verify_extract_tar() {
     local current_file=$((start_line - 1))
     local file_counter=$start_line
 
-    tail -n +$start_line "$hash_file_path" | while IFS= read -r line; do
+    if [[ "$REVERSE_MODE" == true ]]; then
+        seq_args="$(seq $(wc -l < "$hash_file_path") -1 $start_line)"
+    else
+        seq_args="$(seq $start_line $(wc -l < "$hash_file_path"))"
+    fi
+
+    for line_num in $seq_args; do
+        line=$(sed -n "${line_num}p" "$hash_file_path")
         current_file=$((current_file + 1))
         local file_hash=$(echo $line | awk '{print $1}')
         local tar_file_name=$(echo $line | awk '{print $2}')
@@ -1452,6 +1474,9 @@ parse_arguments() {
                 overwrite_snapshots=true
                 dash_o=true
                 ;;
+            --reverse)
+                REVERSE_MODE=true
+                ;;
             *)
                 echo "Unknown option: $1"
                 exit 1
@@ -1481,6 +1506,7 @@ T3_parse_hash_entries() {
     local hash_file_path="$1"
     parsed_start_ordinals=()
     parsed_counts=()
+    parsed_end_ordinals=()
     parsed_filenames=()
 
     while IFS= read -r line; do
@@ -1489,12 +1515,13 @@ T3_parse_hash_entries() {
         if [[ "$fname" =~ -s([0-9]+)-c([0-9]+)(-e([0-9]+))?\.tar\.gz$ ]]; then
             local start="${BASH_REMATCH[1]}"
             local count="${BASH_REMATCH[2]}"
-            local end="${BASH_REMATCH[4]}"
-            if [ -z "$end" ]; then
-                end=$((start + count - 1))
+            local end_incl="${BASH_REMATCH[4]}"
+            if [[ -z "$end_incl" ]]; then
+                end_incl=$((start + count - 1))
             fi
             parsed_start_ordinals+=("$start")
             parsed_counts+=("$count")
+            parsed_end_ordinals+=("$end_incl")
             parsed_filenames+=("$fname")
         fi
     done < "$hash_file_path"
@@ -1645,8 +1672,7 @@ T3_delete_ordinals_from_ordinal() {
 
     for (( i=0; i<total_sets; i++ )); do
         local start="${parsed_start_ordinals[$i]}"
-        local count="${parsed_counts[$i]}"
-        local end=$((start + count - 1))
+        local end="${parsed_end_ordinals[$i]}"
         local is_final_set=$([[ $i -eq $((total_sets - 1)) ]] && echo "true" || echo "false")
 
         if (( delete_from_ordinal >= start && delete_from_ordinal <= end )); then
@@ -1709,8 +1735,14 @@ T3_extract_snapshot_sets() {
 
     local total_sets="${#parsed_filenames[@]}"
 
-    for ((i = start_index; i < total_sets; i++)); do
-        if (( i == total_sets - 1 )); then
+    if [[ "$REVERSE_MODE" == true ]]; then
+        seq_args="$(seq $((total_sets - 1)) -1 $start_index)"
+    else
+        seq_args="$(seq $start_index $((total_sets - 1)))"
+    fi
+
+    for i in $seq_args; do
+            if (( i == total_sets - 1 )); then
             talk ""
             talk "Checking for updated hash.txt before final set" $CYAN
             local tmp_hash="${HOME}/hash_file_new.txt"
@@ -2109,8 +2141,10 @@ move_obsolete_hashes() {
       '
 
     printf '\r\033[K'
-    stty sane
-    tput cnorm
+    if [[ -t 1 ]]; then
+        stty sane
+        tput cnorm
+    fi
 
     local moved
     moved=$(find "$OBSOLETE_DIR" -type f | wc -l)
