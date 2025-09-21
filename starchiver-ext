@@ -130,7 +130,7 @@ SOCKET_PATH="$SOCKET_DIR/${SESSION_NAME}.sock"
 
 TMUX_CMD="tmux -S $SOCKET_PATH"
 
-if [ -z "$TMUX" ]; then
+if [ -z "$TMUX" ] && [[ -t 0 && -t 1 && -t 2 ]]; then
   if $TMUX_CMD has-session -t "$SESSION_NAME" 2>/dev/null; then
     tmux set-environment -t "$SESSION_NAME" STARCHIVER_ARGS "${ARGS[*]}"
     exec $TMUX_CMD attach -t "$SESSION_NAME"
@@ -143,21 +143,23 @@ if [ -z "$TMUX" ]; then
   fi
 fi
 
-tmux set -g mouse off
-tmux set-option -g history-limit 1000000
+if [[ -t 1 ]]; then
+  tmux set -g mouse off
+  tmux set-option -g history-limit 1000000
 
-tmux set-option -g status-style bg=colour17,fg=colour250
+  tmux set-option -g status-style bg=colour17,fg=colour250
 
-tmux set-window-option -g window-status-format ""
-tmux set-window-option -g window-status-current-format ""
+  tmux set-window-option -g window-status-format ""
+  tmux set-window-option -g window-status-current-format ""
 
-tmux set-option -g status-left-length  50
-tmux set-option -g status-left        \
-  '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
+  tmux set-option -g status-left-length  50
+  tmux set-option -g status-left        \
+    '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
 
-tmux set-option -g status-right-length  80
-tmux set-option -g status-right         \
-  '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+  tmux set-option -g status-right-length  80
+  tmux set-option -g status-right         \
+    '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+fi
 
 CORES=$(nproc)
 MAX_CONCURRENT_JOBS=$((CORES * 2))
@@ -290,6 +292,10 @@ download_verify_extract_tar() {
     if [[ "$IS_T3_MODE" == true ]]; then
         T3_parse_hash_entries "$hash_file_path"
         talk "Total Starchiver sets available = ${#parsed_start_ordinals[@]}" $GREEN
+        local __last_idx=$(( ${#parsed_start_ordinals[@]} - 1 ))
+        if (( __last_idx >= 0 )); then
+            talk "Latest set: file=${parsed_filenames[$__last_idx]} | range=${parsed_start_ordinals[$__last_idx]}..${parsed_end_ordinals[$__last_idx]} | count=${parsed_counts[$__last_idx]}" $LGRAY
+        fi
 
         if [[ -s "$extracted_hashes_log" ]]; then
             echo ""
@@ -350,7 +356,8 @@ download_verify_extract_tar() {
 
                     if (( start <= snapshot_time && snapshot_time <= end_incl )); then
                         start_index=$i
-                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (Ordinal Set: $start..$end_incl)" $GREEN
+                        local __file="${parsed_filenames[$i]}"
+                        talk "--> Using provided snapshot $snapshot_time, resolved to start_index $start_index (file=${__file}, range=${start}..${end_incl})" $GREEN
                         if [[ "$delete_snapshots" == true ]]; then
                             talk "Deleting snapshots from ordinal set $start and later" $CYAN
                             T3_delete_ordinals_from_ordinal "$extraction_path" "$start"
@@ -384,10 +391,14 @@ download_verify_extract_tar() {
                     elif [[ "$overwrite_snapshots" == true ]]; then
                         local last_index=$(( ${#parsed_start_ordinals[@]} - 1 ))
                         start_index=$last_index
-                        talk "Overwrite mode: will re‐extract ordinal set index $start_index (Ordinal: ${parsed_start_ordinals[$start_index]})" $CYAN
+                        talk "Overwrite mode: will re-extract set index $start_index (file=${parsed_filenames[$start_index]}, range=${parsed_start_ordinals[$start_index]}..${parsed_end_ordinals[$start_index]})" $CYAN
                     else
                         local last_end="${parsed_end_ordinals[$(( ${#parsed_end_ordinals[@]} - 1 ))]}"
-                        talk "Ordinal $snapshot_time is newer than the latest set (last end = $last_end). No need to Starchive at this time." $LCYAN
+                        local __last_idx=$(( ${#parsed_end_ordinals[@]} - 1 ))
+                        local __last_file="${parsed_filenames[$__last_idx]}"
+                        local __last_start="${parsed_start_ordinals[$__last_idx]}"
+                        local __last_end="${parsed_end_ordinals[$__last_idx]}"
+                        talk "Ordinal $snapshot_time is newer than the latest set (last=${__last_start}..${__last_end}, file=${__last_file}). No need to Starchive at this time." $LCYAN
                         show_completion_footer
                         return
                     fi
@@ -2125,8 +2136,10 @@ move_obsolete_hashes() {
       '
 
     printf '\r\033[K'
-    stty sane
-    tput cnorm
+    if [[ -t 1 ]]; then
+        stty sane
+        tput cnorm
+    fi
 
     local moved
     moved=$(find "$OBSOLETE_DIR" -type f | wc -l)
