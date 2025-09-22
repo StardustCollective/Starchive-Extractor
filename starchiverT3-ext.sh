@@ -1510,17 +1510,6 @@ parse_arguments() {
     fi
 }
 
-parse_arguments "$@"
-
-if [[ -n "${HASH_MODE:-}" ]]; then
-  if [[ -z "$network_choice" ]]; then
-    echo "ERROR: --hash requires --cluster <network> (mainnet|integrationnet|testnet)"
-    exit 1
-  fi
-  process_hash_mode
-  exit 0
-fi
-
 SESSION_NAME="Starchiver"
 TMUX_MODE="outside"
 STARCHIVER_SKIP_TMUX_GATE="${STARCHIVER_SKIP_TMUX_GATE:-}"
@@ -2354,6 +2343,17 @@ process_hash_mode() {
             ;;
     esac
 }
+
+parse_arguments "$@"
+
+if [[ -n "${HASH_MODE:-}" ]]; then
+  if [[ -z "$network_choice" ]]; then
+    echo "ERROR: --hash requires --cluster <network> (mainnet|integrationnet|testnet)"
+    exit 1
+  fi
+  process_hash_mode
+  exit 0
+fi
 
 if [[ "$ONLY_CLEANUP" == true ]]; then
     if [[ -z "$path" ]]; then
