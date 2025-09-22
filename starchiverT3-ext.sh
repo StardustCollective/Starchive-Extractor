@@ -121,6 +121,15 @@ install_tools() {
 
 install_tools
 
+SCRIPT_REALPATH="$(realpath "$0" 2>/dev/null || echo "$0")"
+SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
+
+SESSION_NAME="Starchiver"
+TMUX_MODE="outside"
+STARCHIVER_SKIP_TMUX_GATE="${STARCHIVER_SKIP_TMUX_GATE:-}"
+
+parse_arguments "$@"
+
 if [[ -n "${HASH_MODE:-}" ]]; then
   if [[ -z "$network_choice" ]]; then
     talk "[ERROR] --hash requires --cluster <network> (mainnet/integrationnet/testnet)" $LRED
@@ -129,13 +138,6 @@ if [[ -n "${HASH_MODE:-}" ]]; then
   process_hash_mode
   exit 0
 fi
-
-SCRIPT_REALPATH="$(realpath "$0" 2>/dev/null || echo "$0")"
-SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
-
-SESSION_NAME="Starchiver"
-TMUX_MODE="outside"
-STARCHIVER_SKIP_TMUX_GATE="${STARCHIVER_SKIP_TMUX_GATE:-}"
 
 ARGS=("$@")
 
@@ -2352,8 +2354,6 @@ process_hash_mode() {
             ;;
     esac
 }
-
-parse_arguments "$@"
 
 if [[ "$ONLY_CLEANUP" == true ]]; then
     if [[ -z "$path" ]]; then
