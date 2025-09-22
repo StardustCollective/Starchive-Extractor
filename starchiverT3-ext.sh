@@ -121,15 +121,6 @@ install_tools() {
 
 install_tools
 
-if [[ -n "${HASH_MODE:-}" ]]; then
-  if [[ -z "$network_choice" ]]; then
-    talk "[ERROR] --hash requires --cluster <network> (mainnet/integrationnet/testnet)" $LRED
-    exit 1
-  fi
-  process_hash_mode
-  exit 0
-fi
-
 SCRIPT_REALPATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 SCRIPT_SHA256="$(sha256sum "$SCRIPT_REALPATH" 2>/dev/null | awk '{print $1}')"
 
@@ -2335,14 +2326,13 @@ process_hash_mode() {
 
             if [[ "$fname" =~ -e([0-9]+)\.tar\.gz$ ]]; then
                 latest="${BASH_REMATCH[1]}"
-            elif [[ "$fname" =~ -s([0-9]+)-c([0-9]+)\.tar\.gz$ ]]; then
+            elif [[ "$fname" =~ -c([0-9]+)\.tar\.gz$ && "$fname" =~ -s([0-9]+)-c([0-9]+) ]]; then
                 local start="${BASH_REMATCH[1]}"
                 local count="${BASH_REMATCH[2]}"
                 latest=$((start + count - 1))
             else
                 latest="0"
             fi
-
             echo "$latest"
             exit 0
             ;;
@@ -2363,6 +2353,7 @@ if [[ -n "${HASH_MODE:-}" ]]; then
   process_hash_mode
   exit 0
 fi
+
 
 if [[ "$ONLY_CLEANUP" == true ]]; then
     if [[ -z "$path" ]]; then
