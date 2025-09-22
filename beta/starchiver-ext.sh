@@ -2219,8 +2219,15 @@ process_hash_mode() {
             ;;
         latest)
             local last_line fname latest
+            echo "[DEBUG] Using hash file: $hash_file_path" >&2
+            echo "[DEBUG] Showing last 3 lines of hash file:" >&2
+            tail -n 3 "$hash_file_path" >&2
+
             last_line=$(tail -n 1 "$hash_file_path")
+            echo "[DEBUG] Last line raw: $last_line" >&2
+
             fname=$(echo "$last_line" | awk '{print $2}')
+            echo "[DEBUG] Parsed filename: $fname" >&2
 
             if [[ "$fname" =~ -e([0-9]+)\.tar\.gz$ ]]; then
                 latest="${BASH_REMATCH[1]}"
