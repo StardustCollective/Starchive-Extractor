@@ -92,6 +92,13 @@ talk() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $plain_message" >> "$log_file"
 }
 
+logonly() {
+    local message="$1"
+    local log_file="${HOME}/starchiver.log"
+    local plain_message=$(echo -e "$message" | sed 's/\x1B\[[0-9;]*[JKmsu]//g')
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $plain_message" >> "$log_file"
+}
+
 install_tools() {
     if ! command -v tmux &> /dev/null; then
         talk "tmux could not be found, installing..." $GREEN
@@ -2219,15 +2226,15 @@ process_hash_mode() {
             ;;
         latest)
             local last_line fname latest
-            echo "[DEBUG] Using hash file: $hash_file_path" >&2
-            echo "[DEBUG] Showing last 3 lines of hash file:" >&2
-            tail -n 3 "$hash_file_path" >&2
+            logonly "[DEBUG] Using hash file: $hash_file_path"
+            logonly "[DEBUG] Last 3 lines of hash file:"
+            tail -n 3 "$hash_file_path" >> "$HOME/starchiver.log"
 
             last_line=$(tail -n 1 "$hash_file_path")
-            echo "[DEBUG] Last line raw: $last_line" >&2
+            logonly "[DEBUG] Last line raw: $last_line"
 
             fname=$(echo "$last_line" | awk '{print $2}')
-            echo "[DEBUG] Parsed filename: $fname" >&2
+            logonly "[DEBUG] Parsed filename: $fname"
 
             if [[ "$fname" =~ -e([0-9]+)\.tar\.gz$ ]]; then
                 latest="${BASH_REMATCH[1]}"
