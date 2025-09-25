@@ -2277,7 +2277,7 @@ SOCKET_DIR="$HOME/.tmux"
 mkdir -p "$SOCKET_DIR"
 SOCKET_PATH="$SOCKET_DIR/${SESSION_NAME}.sock"
 
-TMUX_CMD="tmux -S $SOCKET_PATH"
+TMUX_CMD="/usr/bin/tmux -S $SOCKET_PATH"
 
 if [[ -z "$STARCHIVER_SKIP_TMUX_GATE" ]]; then
   if [[ -S "$SOCKET_PATH" ]] && ! $TMUX_CMD list-sessions >/dev/null 2>&1; then
@@ -2338,16 +2338,16 @@ if [[ -z "$STARCHIVER_SKIP_TMUX_GATE" ]]; then
         ;;
       inside)
         if [[ -n "$TMUX" ]]; then
-          tmux set -g mouse off
-          tmux set-option -g history-limit 1000000
-          tmux set -g status on
-          tmux set-option -g status-style bg=colour17,fg=colour250
-          tmux set-window-option -g window-status-format ""
-          tmux set-window-option -g window-status-current-format ""
-          tmux set-option -g status-left-length 50
-          tmux set-option -g status-left '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
-          tmux set-option -g status-right-length 80
-          tmux set-option -g status-right '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
+            /usr/bin/tmux set -g mouse off
+            /usr/bin/tmux set-option -g history-limit 1000000
+            /usr/bin/tmux set -g status on
+            /usr/bin/tmux set-option -g status-style bg=colour17,fg=colour250
+            /usr/bin/tmux set-window-option -g window-status-format ""
+            /usr/bin/tmux set-window-option -g window-status-current-format ""
+            /usr/bin/tmux set-option -g status-left-length 50
+            /usr/bin/tmux set-option -g status-left '#[fg=colour118,bold]Starchiver #[fg=colour250]| Detach: CTRL+b then d'
+            /usr/bin/tmux set-option -g status-right-length 80
+            /usr/bin/tmux set-option -g status-right '#[fg=colour118,bold]Proph151Music'"'"'s Tip Jar: #[fg=white,bold]DAG0Zyq8XPnDKRB3wZaFcFHjL4seCLSDtHbUcYq3'
         fi
         ;;
       off)
