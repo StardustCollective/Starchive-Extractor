@@ -217,7 +217,8 @@ get_config_hashurl_for_data() {
   [[ -z "$data_path" ]] && return 1
 
   local conf_file
-  conf_file="$(realpath "${data_path}/../../config.txt" 2>/dev/null)" || return 1
+  conf_file="$(realpath "${data_path}/../../config.txt" 2>/dev/null)" || { logonly "[DEBUG] realpath failed for base=${data_path}/../../config.txt"; return 1; }
+  logonly "[DEBUG] checking override conf: $conf_file"
 
   [[ -f "$conf_file" ]] || return 1
 
