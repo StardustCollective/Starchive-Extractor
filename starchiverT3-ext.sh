@@ -212,6 +212,44 @@ set_hash_url() {
   esac
 }
 
+get_config_hashurl_for_data() {
+  local data_path="$1"
+  [[ -z "$data_path" ]] && return 1
+
+  local conf_file
+  conf_file="$(realpath "${data_path}/../../config.txt" 2>/dev/null)" || return 1
+
+  [[ -f "$conf_file" ]] || return 1
+
+  local line val
+  line="$(grep -m1 -E '^\s*StarchiverHashURL\s*=' "$conf_file" | tail -n1)"
+  [[ -z "$line" ]] && return 1
+
+  val="${line#*=}"
+  val="$(echo "$val" | xargs)"
+
+  if [[ "$val" =~ ^https?://.+ ]]; then
+    printf '%s\n' "$val"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_hash_url() {
+  local default_url="$1"
+  local data_path="$2"
+
+  local override_url
+  override_url="$(get_config_hashurl_for_data "$data_path")" || {
+    printf '%s\n' "$default_url"
+    return 0
+  }
+
+  talk "Overriding hash URL from config.txt: ${override_url}" $CYAN
+  printf '%s\n' "$override_url"
+}
+
 T3_map_datetime_to_ordinal() {
     local datetime_str="$1"
     local network="$2"
@@ -605,7 +643,11 @@ list_starchive_containers() {
          "snapshot_time='$snapshot_time'" \
          "data_path='$data_path'" >> "$HOME/starchiver.debug.log"
 
-    local hash_url_base=$(set_hash_url)
+    local default_url
+    default_url=$(set_hash_url)
+    local override_url=""
+    override_url=$(get_config_hashurl_for_data "$data_path") || true
+    local hash_url_base="${override_url:-$default_url}"
     local hash_file_path="${HOME}/hash_file.txt"
 
     echo "Downloading the hash file from: $hash_url_base"
@@ -1379,6 +1421,7 @@ main_menu() {
     if [[ -z "$hashurl" ]]; then
         hashurl=$(set_hash_url)
     fi
+    hashurl="$(resolve_hash_url "$hashurl" "$path")"
 
     missingOrdinalsurl="${hashurl%/*}/${network}_missing_ordinals.txt"
 
@@ -2213,6 +2256,10 @@ process_hash_mode() {
     local hashurl
     hashurl=$(set_hash_url) || { echo "unreachable"; exit 1; }
 
+    if [[ -n "$path" ]]; then
+        hashurl="$(resolve_hash_url "$hashurl" "$path")"
+    fi
+
     local hash_file_path="${HOME}/hash_file.txt"
     if ! wget -q -O "$hash_file_path" "$hashurl"; then
         echo "unreachable"
@@ -2392,6 +2439,7 @@ if [[ -n "$network_choice" ]]; then
   else
     hashurl=$(set_hash_url)
   fi
+  hashurl="$(resolve_hash_url "$hashurl" "$path")"
 
   download_verify_extract_tar "$hashurl" "$path"
 
