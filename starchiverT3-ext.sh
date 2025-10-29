@@ -2256,8 +2256,18 @@ process_hash_mode() {
     local hashurl
     hashurl=$(set_hash_url) || { echo "unreachable"; exit 1; }
 
+    local dp=""
     if [[ -n "$path" ]]; then
-        hashurl="$(resolve_hash_url "$hashurl" "$path")"
+        dp="$path"
+    elif [[ -n "$DATA_PATH" ]]; then
+        dp="$DATA_PATH"
+    fi
+
+    if [[ -n "$dp" ]]; then
+        hashurl="$(resolve_hash_url "$hashurl" "$dp")"
+        logonly "[DEBUG] --hash mode using hash URL: $hashurl"
+    else
+        logonly "[DEBUG] --hash mode has no data path; using default hash URL: $hashurl"
     fi
 
     local hash_file_path="${HOME}/hash_file.txt"
