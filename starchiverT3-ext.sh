@@ -197,7 +197,7 @@ UPLOAD_TARGET=""
 set_hash_url() {
   case $network_choice in
     mainnet)
-      echo "http://116.203.215.246:7777/hash.txt"
+      echo "http://37.27.88.199:7777/hash.txt"
       ;;
     integrationnet)
       echo "http://37.27.92.171:7777/hash.txt"
