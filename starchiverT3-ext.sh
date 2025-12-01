@@ -200,7 +200,7 @@ set_hash_url() {
       echo "http://116.203.215.246:7777/hash.txt"
       ;;
     integrationnet)
-      echo "http://5.161.243.241:7777/hash.txt"
+      echo "http://37.27.92.171:7777/hash.txt"
       ;;
     testnet)
       echo "http://65.108.87.84:7777/hash.txt"
