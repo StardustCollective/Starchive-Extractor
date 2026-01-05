@@ -203,7 +203,7 @@ set_hash_url() {
       echo "http://37.27.92.171:7777/hash.txt"
       ;;
     testnet)
-      echo "http://65.108.87.84:7777/hash.txt"
+      echo "http://46.62.246.239:7777/hash.txt"
       ;;
     *)
       talk "Invalid network choice: $network_choice" $LRED
